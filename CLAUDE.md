@@ -25,7 +25,7 @@ src/
 ├── index.scss                           # Global reset (fullscreen, no overflow)
 ├── main.tsx                             # Entry point
 ├── vehicles/                            # Vehicle JSON configs (auto-discovered)
-│   ├── default.json
+│   ├── sedan.json
 │   ├── sports.json
 │   └── tractor.json                     # Slow debug vehicle
 ├── components/

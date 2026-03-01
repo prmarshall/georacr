@@ -250,7 +250,10 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       colliders={false}
       type="dynamic"
     >
-      <CuboidCollider args={chassis.halfExtents} />
+      <CuboidCollider
+        args={chassis.halfExtents}
+        density={chassis.density ?? 1}
+      />
 
       {/* chassis */}
       <mesh ref={chassisMeshRef}>

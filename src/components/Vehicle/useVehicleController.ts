@@ -44,6 +44,8 @@ export function useVehicleController(
         wheel.radius,
       );
       vehicle.setWheelSuspensionStiffness(index, wheel.suspensionStiffness);
+      vehicle.setWheelSuspensionCompression(index, wheel.suspensionDamping);
+      vehicle.setWheelSuspensionRelaxation(index, wheel.suspensionDamping);
       vehicle.setWheelMaxSuspensionTravel(index, wheel.maxSuspensionTravel);
       vehicle.setWheelFrictionSlip(index, wheel.frictionSlip);
       vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);

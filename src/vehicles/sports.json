@@ -16,6 +16,7 @@
       "axleCs": [1, 0, 0],
       "suspensionRestLength": 0.18,
       "suspensionStiffness": 45,
+      "suspensionDamping": 4,
       "maxSuspensionTravel": 0.2,
       "sideFrictionStiffness": 5,
       "frictionSlip": 1.4,

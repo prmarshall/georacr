@@ -8,6 +8,7 @@ export interface WheelDefaults {
   axleCs: Vec3Tuple;
   suspensionRestLength: number;
   suspensionStiffness: number;
+  suspensionDamping?: number;
   maxSuspensionTravel: number;
   frictionSlip: number;
   sideFrictionStiffness: number;
@@ -22,6 +23,7 @@ export interface VehicleConfig {
   color: string;
   chassis: {
     halfExtents: Vec3Tuple;
+    density?: number;
   };
   forces: {
     accelerate: number;
@@ -47,6 +49,7 @@ export interface WheelInfo {
   axleCs: Vector3;
   suspensionRestLength: number;
   suspensionStiffness: number;
+  suspensionDamping: number;
   maxSuspensionTravel: number;
   frictionSlip: number;
   sideFrictionStiffness: number;
@@ -119,6 +122,8 @@ export function createWheels(config: VehicleConfig): WheelInfo[] {
       placement.suspensionRestLength ?? defaults.suspensionRestLength,
     suspensionStiffness:
       placement.suspensionStiffness ?? defaults.suspensionStiffness,
+    suspensionDamping:
+      placement.suspensionDamping ?? defaults.suspensionDamping ?? 0,
     maxSuspensionTravel:
       placement.maxSuspensionTravel ?? defaults.maxSuspensionTravel,
     frictionSlip: placement.frictionSlip ?? defaults.frictionSlip,
