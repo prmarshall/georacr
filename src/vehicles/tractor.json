@@ -11,7 +11,7 @@
     "brake": 3,
     "steerAngleDeg": 45,
     "rollingResistance": 0.15,
-    "airDragCoefficient": 0.8
+    "airDragCoefficient": 2.43
   },
   "wheels": {
     "defaults": {

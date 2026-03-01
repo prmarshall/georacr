@@ -11,7 +11,7 @@
     "brake": 3.0,
     "steerAngleDeg": 30,
     "rollingResistance": 0.024,
-    "airDragCoefficient": 0.005
+    "airDragCoefficient": 0.052
   },
   "gears": [40, 80, 140, 200],
   "wheels": {

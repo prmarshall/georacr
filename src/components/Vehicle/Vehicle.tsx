@@ -186,17 +186,32 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
     controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
 
-    // brakes: handbrake + rolling resistance + air drag
+    // brakes: handbrake only via wheel brakes
     speedRef.current = speed;
     const handBrake = Number(keys.brake) * forces.brake;
-    const rollingResistance =
-      throttle === 0 && speed > 0.01 ? forces.rollingResistance : 0;
-    const airDrag = forces.airDragCoefficient * speed * speed;
-    const totalBrake = handBrake + rollingResistance + airDrag;
-    controller.setWheelBrake(0, totalBrake);
-    controller.setWheelBrake(1, totalBrake);
-    controller.setWheelBrake(2, totalBrake);
-    controller.setWheelBrake(3, totalBrake);
+    controller.setWheelBrake(0, handBrake);
+    controller.setWheelBrake(1, handBrake);
+    controller.setWheelBrake(2, handBrake);
+    controller.setWheelBrake(3, handBrake);
+
+    // air drag + rolling resistance applied directly to chassis body
+    // (setWheelBrake clamps internally, causing artificial speed caps)
+    // Reset external forces first — addForce accumulates across frames
+    chassisRigidBody.resetForces(true);
+    if (speed > 0.01) {
+      const dragMagnitude = forces.airDragCoefficient * speed * speed;
+      const resistMagnitude = throttle === 0 ? forces.rollingResistance : 0;
+      const totalResist = dragMagnitude + resistMagnitude;
+      // Opposing force in velocity direction (horizontal only)
+      const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
+      if (hSpeed > 0.01) {
+        const factor = -totalResist / hSpeed;
+        chassisRigidBody.addForce(
+          new rapier.Vector3(linvel.x * factor, 0, linvel.z * factor),
+          true,
+        );
+      }
+    }
 
     // steering: front wheels (2, 3) with smoothing
     // At low speed, allow sharper steering (up to 1.5x) for tight manoeuvres

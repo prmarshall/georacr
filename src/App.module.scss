@@ -60,6 +60,23 @@
   font-size: 14px;
 }
 
+.stopwatch {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  margin-bottom: 64px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: sans-serif;
+  pointer-events: none;
+  user-select: none;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .resetButton {
   position: fixed;
   bottom: 24px;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
@@ -41,14 +41,18 @@ function Speedometer({
 }: {
   vehicleRef: React.RefObject<VehicleHandle | null>;
 }) {
-  const spanRef = useRef<HTMLSpanElement>(null);
+  const kmhRef = useRef<HTMLSpanElement>(null);
+  const mphRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     let raf: number;
+    let smoothedKmh = 0;
     const update = () => {
-      if (spanRef.current && vehicleRef.current) {
-        const kmh = vehicleRef.current.speed * 3.6;
-        spanRef.current.textContent = `${Math.round(kmh)}`;
+      if (kmhRef.current && mphRef.current && vehicleRef.current) {
+        const rawKmh = vehicleRef.current.speed * 3.6;
+        smoothedKmh += (rawKmh - smoothedKmh) * 0.15;
+        kmhRef.current.textContent = `${Math.round(smoothedKmh)}`;
+        mphRef.current.textContent = `${Math.round(smoothedKmh * 0.621371)}`;
       }
       raf = requestAnimationFrame(update);
     };
@@ -58,10 +62,56 @@ function Speedometer({
 
   return (
     <div className={styles.speedometer}>
-      <span ref={spanRef} className={styles.speedValue}>
+      <span ref={kmhRef} className={styles.speedValue}>
         0
       </span>
       <span className={styles.speedUnit}>km/h</span>
+      <span ref={mphRef} className={styles.speedValue}>
+        0
+      </span>
+      <span className={styles.speedUnit}>mph</span>
+    </div>
+  );
+}
+
+function Stopwatch({ resetKey }: { resetKey: number }) {
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const startTime = useRef<number | null>(null);
+
+  useEffect(() => {
+    startTime.current = null;
+    if (spanRef.current) spanRef.current.textContent = "0.00";
+  }, [resetKey]);
+
+  useEffect(() => {
+    const accelKeys = new Set(["ArrowUp", "KeyW"]);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (startTime.current === null && accelKeys.has(e.code)) {
+        startTime.current = performance.now();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [resetKey]);
+
+  useEffect(() => {
+    let raf: number;
+    const update = () => {
+      if (spanRef.current && startTime.current !== null) {
+        const elapsed = (performance.now() - startTime.current) / 1000;
+        spanRef.current.textContent = elapsed.toFixed(2);
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [resetKey]);
+
+  return (
+    <div className={styles.stopwatch}>
+      <span ref={spanRef}>0.00</span>
+      <span className={styles.speedUnit}> s</span>
     </div>
   );
 }
@@ -69,12 +119,26 @@ function Speedometer({
 export default function App() {
   const vehicleRef = useRef<VehicleHandle>(null);
   const [vehicleIndex, setVehicleIndex] = useState(0);
+  const [resetKey, setResetKey] = useState(0);
 
   const vehicle = VEHICLES[vehicleIndex];
 
   const prev = () =>
     setVehicleIndex((i) => (i - 1 + VEHICLES.length) % VEHICLES.length);
   const next = () => setVehicleIndex((i) => (i + 1) % VEHICLES.length);
+
+  const handleReset = useCallback(() => {
+    vehicleRef.current?.reset();
+    setResetKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "KeyR") setResetKey((k) => k + 1);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <>
@@ -106,11 +170,9 @@ export default function App() {
       </div>
 
       <Speedometer vehicleRef={vehicleRef} />
+      <Stopwatch resetKey={resetKey} />
 
-      <UIButton
-        onClick={() => vehicleRef.current?.reset()}
-        className={styles.resetButton}
-      >
+      <UIButton onClick={handleReset} className={styles.resetButton}>
         Reset (R)
       </UIButton>
     </>
