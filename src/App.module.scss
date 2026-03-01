@@ -31,6 +31,35 @@
   justify-content: center;
 }
 
+.speedometer {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.speedValue {
+  color: #fff;
+  font-size: 36px;
+  font-weight: 700;
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.speedUnit {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
 .resetButton {
   position: fixed;
   bottom: 24px;

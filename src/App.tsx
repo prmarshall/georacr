@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
@@ -33,6 +33,36 @@ function Scene({
       <Floor />
       <Vehicle key={vehicleIndex} ref={vehicleRef} config={config} />
     </Physics>
+  );
+}
+
+function Speedometer({
+  vehicleRef,
+}: {
+  vehicleRef: React.RefObject<VehicleHandle | null>;
+}) {
+  const spanRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    let raf: number;
+    const update = () => {
+      if (spanRef.current && vehicleRef.current) {
+        const kmh = vehicleRef.current.speed * 3.6;
+        spanRef.current.textContent = `${Math.round(kmh)}`;
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [vehicleRef]);
+
+  return (
+    <div className={styles.speedometer}>
+      <span ref={spanRef} className={styles.speedValue}>
+        0
+      </span>
+      <span className={styles.speedUnit}>km/h</span>
+    </div>
   );
 }
 
@@ -74,6 +104,8 @@ export default function App() {
           &#8250;
         </UIButton>
       </div>
+
+      <Speedometer vehicleRef={vehicleRef} />
 
       <UIButton
         onClick={() => vehicleRef.current?.reset()}

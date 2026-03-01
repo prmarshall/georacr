@@ -18,6 +18,8 @@ import { useVehicleController } from "./useVehicleController";
 
 export interface VehicleHandle {
   reset: () => void;
+  /** Current speed in m/s — updated every frame, read-only. */
+  speed: number;
 }
 
 interface VehicleProps {
@@ -102,8 +104,18 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     body.setAngvel(new rapier.Vector3(0, 0, 0), true);
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- doReset captures only stable refs (rapier, vehicleController)
-  useImperativeHandle(ref, () => ({ reset: doReset }), []);
+  const speedRef = useRef(0);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      reset: doReset,
+      get speed() {
+        return speedRef.current;
+      },
+    }),
+    [],
+  );
 
   useFrame((state, delta) => {
     if (!chassisMeshRef.current || !vehicleController.current) return;
@@ -142,7 +154,11 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelEngineForce(3, engineForce);
 
     // brakes: handbrake + rolling resistance + air drag
-    const speed = Math.abs(controller.currentVehicleSpeed());
+    const linvel = chassisRigidBody.linvel();
+    const speed = Math.sqrt(
+      linvel.x * linvel.x + linvel.y * linvel.y + linvel.z * linvel.z,
+    );
+    speedRef.current = speed;
     const handBrake = Number(keys.brake) * forces.brake;
     const rollingResistance =
       throttle === 0 && speed > 0.01 ? forces.rollingResistance : 0;
