@@ -1,24 +1,25 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
-import { Euler, MathUtils, Object3D, Quaternion, Vector3 } from "three";
-import {
-  createWheels,
-  getGearTorque,
-  type VehicleConfig,
-} from "./vehicleConfig";
+import { Euler, Object3D, Quaternion } from "three";
+import { createWheels, type VehicleConfig } from "./vehicleConfig";
 import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
+import { useChaseCamera } from "./useChaseCamera";
+import {
+  computeEngineForce,
+  applyDrivetrain,
+  computeDragForce,
+  computeSteering,
+  computeYawCorrection,
+  computeWheelFriction,
+  computeAirControl,
+  type Keys,
+  type DriftState,
+} from "./vehiclePhysics";
 
 export interface VehicleHandle {
   reset: () => void;
@@ -30,56 +31,16 @@ interface VehicleProps {
   config?: VehicleConfig;
 }
 
-const cameraTargetOffset = new Vector3(0, 1.5, 0);
-const ORBIT_DISTANCE = 12;
-const MOUSE_SENSITIVITY = 0.003;
-
-const _bodyPosition = new Vector3();
-const _airControlAngVel = new Vector3();
-const _cameraPosition = new Vector3();
-const _cameraTarget = new Vector3();
-
 export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   { config = VEHICLES[0].config },
   ref,
 ) {
-  const { world, rapier } = useRapier();
+  const { rapier, world } = useRapier();
   const gl = useThree((s) => s.gl);
   const [, getKeys] = useKeyboardControls();
 
   // Steering drift state
-  const driftTarget = useRef(0);
-  const driftCurrent = useRef(0);
-
-  // Camera orbit state — mouse offset decays back to 0 (behind vehicle)
-  const mouseAzimuthOffset = useRef(0);
-  const mouseElevationOffset = useRef(0);
-  const orbitElevation = useRef(0.35);
-  const lastMouseMoveTime = useRef(0);
-  const smoothedYaw = useRef(0);
-
-  useEffect(() => {
-    const canvas = gl.domElement;
-
-    const handleClick = () => {
-      canvas.requestPointerLock();
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== canvas) return;
-      mouseAzimuthOffset.current -= e.movementX * MOUSE_SENSITIVITY;
-      mouseElevationOffset.current += e.movementY * MOUSE_SENSITIVITY;
-      lastMouseMoveTime.current = performance.now();
-    };
-
-    canvas.addEventListener("click", handleClick);
-    document.addEventListener("mousemove", handleMouseMove);
-
-    return () => {
-      canvas.removeEventListener("click", handleClick);
-      document.removeEventListener("mousemove", handleMouseMove);
-    };
-  }, [gl]);
+  const driftState = useRef<DriftState>({ target: 0, current: 0 });
 
   const chassisMeshRef = useRef<Object3D>(null!);
   const chassisBodyRef = useRef<RapierRigidBody>(null!);
@@ -93,12 +54,10 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     wheels,
   );
 
-  const [smoothedCameraPosition] = useState(new Vector3(0, 5, 8));
-  const [smoothedCameraTarget] = useState(new Vector3());
-
   const ground = useRef<Collider | null>(null);
+  const speedRef = useRef(0);
 
-  const { forces, spawn, chassis, driveType, gears } = config;
+  const { forces, spawn, chassis, driveType } = config;
 
   const doReset = () => {
     const controller = vehicleController.current;
@@ -112,8 +71,6 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     body.setAngvel(new rapier.Vector3(0, 0, 0), true);
   };
 
-  const speedRef = useRef(0);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -125,16 +82,17 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     [],
   );
 
-  useFrame((state, delta) => {
-    if (!chassisMeshRef.current || !vehicleController.current) return;
+  // Camera runs in its own useFrame
+  useChaseCamera(chassisMeshRef, vehicleController, gl);
 
-    const t = 1.0 - 0.01 ** delta;
+  useFrame(() => {
+    if (!chassisMeshRef.current || !vehicleController.current) return;
 
     const controller = vehicleController.current;
     const chassisRigidBody = controller.chassis();
-    const keys = getKeys() as Record<string, boolean>;
+    const keys = getKeys() as unknown as Keys;
 
-    // ground check
+    // --- ground check ---
     const ray = new rapier.Ray(chassisRigidBody.translation(), {
       x: 0,
       y: -1,
@@ -149,275 +107,98 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       undefined,
       chassisRigidBody,
     );
+    ground.current = raycastResult ? raycastResult.collider : null;
 
-    ground.current = null;
-    if (raycastResult) {
-      ground.current = raycastResult.collider;
-    }
-
-    // engine force — drive type determines which wheels receive power
-    const throttle = Number(keys.forward) - Number(keys.backward);
-    const steerInput = Math.abs(Number(keys.left) - Number(keys.right));
-    // Speed for torque/gear calculations
+    // --- engine + drivetrain ---
     const linvel = chassisRigidBody.linvel();
     const speed = Math.sqrt(
       linvel.x * linvel.x + linvel.y * linvel.y + linvel.z * linvel.z,
     );
-    const speedKmhForGear = speed * 3.6;
-    // FWD: reduce throttle when steering (front tires share grip between drive + turn)
-    // Ramps from no penalty at standstill to full 40% at 30+ km/h (grip budget matters at speed)
-    const steerPenalty =
-      driveType === "FWD"
-        ? steerInput * 0.4 * MathUtils.clamp(speedKmhForGear / 30, 0, 1)
-        : 0;
-    const steerThrottleReduction = 1.0 - steerPenalty;
-    // Clutch engagement: ramp from 0.3 at standstill to 1.0 at ~15 km/h
-    const clutchFactor = MathUtils.lerp(
-      0.3,
-      1.0,
-      MathUtils.clamp(speedKmhForGear / 15, 0, 1),
-    );
-    // Gear torque multiplier (1st gear = highest, top gear = 1.0)
-    const gearMultiplier = gears
-      ? getGearTorque(gears, speedKmhForGear).multiplier
-      : 1.0;
-    const engineForce =
-      throttle *
-      forces.accelerate *
-      steerThrottleReduction *
-      clutchFactor *
-      gearMultiplier;
-    // handbrake: locks rear wheels only (front stays free)
-    // On RWD/AWD the brake and engine fight over the same rear wheels —
-    // the clamped brake absorbs engine power, so rear engine force is killed.
     speedRef.current = speed;
-    const handBrake = Number(keys.brake) * forces.brake;
-    const handbrakeActive = handBrake > 0;
 
-    const driveRear = driveType === "RWD" || driveType === "AWD";
-    const driveFront = driveType === "FWD" || driveType === "AWD";
-    const rearEngineForce = driveRear && !handbrakeActive ? engineForce : 0;
-    controller.setWheelEngineForce(0, rearEngineForce);
-    controller.setWheelEngineForce(1, rearEngineForce);
-    controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
-    controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
-    controller.setWheelBrake(0, handBrake);
-    controller.setWheelBrake(1, handBrake);
-    controller.setWheelBrake(2, 0);
-    controller.setWheelBrake(3, 0);
-
-    // air drag + rolling resistance applied directly to chassis body
-    // (setWheelBrake clamps internally, causing artificial speed caps)
-    // Reset external forces first — addForce accumulates across frames
-    chassisRigidBody.resetForces(true);
-    if (speed > 0.01) {
-      const dragMagnitude = forces.airDragCoefficient * speed * speed;
-      const resistMagnitude = throttle === 0 ? forces.rollingResistance : 0;
-      const totalResist = dragMagnitude + resistMagnitude;
-      // Opposing force in velocity direction (horizontal only)
-      const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
-      if (hSpeed > 0.01) {
-        const factor = -totalResist / hSpeed;
-        chassisRigidBody.addForce(
-          new rapier.Vector3(linvel.x * factor, 0, linvel.z * factor),
-          true,
-        );
-      }
-    }
-
-    // steering: front wheels (2, 3) with smoothing
-    // At low speed, allow sharper steering (up to 1.5x) for tight manoeuvres
-    const speedKmh = speed * 3.6;
-    const isReversing = throttle < 0;
-    const lowSpeedSteerBoost = MathUtils.lerp(
-      1.5,
-      1.0,
-      MathUtils.clamp(speedKmh / 20, 0, 1),
+    const engine = computeEngineForce(config, keys, speed);
+    applyDrivetrain(
+      controller,
+      driveType,
+      engine.engineForce,
+      engine.handbrakeActive,
+      engine.handBrake,
     );
-    const steerDirection = Number(keys.left) - Number(keys.right);
-    const targetSteering =
-      forces.steerAngle * lowSpeedSteerBoost * steerDirection;
-    // Lerp toward target: 0.75 when turning in, 0.95 when centering (fast but smooth)
-    const currentSteering = controller.wheelSteering(2) || 0;
-    const steerLerp = steerDirection === 0 ? 0.95 : 0.75;
-    const steering = MathUtils.lerp(currentSteering, targetSteering, steerLerp);
-    controller.setWheelSteering(2, steering);
-    controller.setWheelSteering(3, steering);
 
-    // Steering drift + self-centering (simulates road imperfections + caster)
-    // Tiny random yaw perturbation prevents perfectly straight driving,
-    // equalizing straight-line and post-turn top speed scenarios.
-    // Use horizontal speed to avoid noisy atan2 from vertical suspension bounce.
-    const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
-    const hSpeedKmh = hSpeed * 3.6;
-    if (ground.current && hSpeedKmh > 15 && !handbrakeActive) {
-      const angvel = chassisRigidBody.angvel();
-      // Smoothly wander toward a new random drift target
-      if (Math.random() < 0.02) {
-        driftTarget.current = (Math.random() - 0.5) * 0.006 * (hSpeedKmh / 100);
-      }
-      driftCurrent.current +=
-        (driftTarget.current - driftCurrent.current) * 0.05;
-      const drift = driftCurrent.current;
-
-      // When not steering: damp yaw then self-center once stable
-      if (steerDirection === 0) {
-        const yawRate = Math.abs(angvel.y);
-        // Aggressive damping for spins, gentle for normal driving
-        const dampFactor = MathUtils.lerp(
-          0.95,
-          0.7,
-          MathUtils.clamp(yawRate / 3, 0, 1),
-        );
-        let newYaw = angvel.y * dampFactor + drift;
-
-        // Self-centering only when yaw rate is low (not during spins —
-        // atan2 is unstable at high spin rates and correction oscillates)
-        if (yawRate < 0.5) {
-          const chassisRot = chassisRigidBody.rotation();
-          const fx =
-            2 * (chassisRot.x * chassisRot.z + chassisRot.w * chassisRot.y);
-          const fz =
-            1 - 2 * (chassisRot.x * chassisRot.x + chassisRot.y * chassisRot.y);
-          const headingYaw = Math.atan2(-fx, -fz);
-          const velocityYaw = Math.atan2(linvel.x, linvel.z);
-          let yawError = headingYaw - velocityYaw;
-          yawError = ((yawError + Math.PI) % (2 * Math.PI)) - Math.PI;
-          if (yawError < -Math.PI) yawError += 2 * Math.PI;
-          newYaw += yawError * 2.0;
-        }
-
-        chassisRigidBody.setAngvel(
-          new rapier.Vector3(angvel.x, newYaw, angvel.z),
-          true,
-        );
-      } else {
-        chassisRigidBody.setAngvel(
-          new rapier.Vector3(angvel.x, angvel.y + drift, angvel.z),
-          true,
-        );
-      }
-    }
-
-    // Dynamic wheel friction
-    const reverseSteering = isReversing && steerInput > 0;
-    for (let i = 0; i < wheels.length; i++) {
-      const baseSideFriction = wheels[i].sideFrictionStiffness;
-      const baseFrictionSlip = wheels[i].frictionSlip;
-      const isFront = i >= 2;
-      const isRear = i < 2;
-      let sideFriction = baseSideFriction;
-      let frictionSlip = baseFrictionSlip;
-      // Reduce front lateral grip when reversing + steering (prevents pivot-spin)
-      if (isFront && reverseSteering) sideFriction *= 0.2;
-      // Handbrake: at speed, locked rear wheels lose grip and slide.
-      // At low speed, wheels lock in place (full friction retained).
-      // Floor at 40% to prevent uncontrollable spins (especially FWD).
-      if (isRear && handbrakeActive) {
-        const driftFactor = MathUtils.clamp(speedKmh / 30, 0, 1);
-        sideFriction *= MathUtils.lerp(1.0, 0.4, driftFactor);
-        frictionSlip *= MathUtils.lerp(1.0, 0.4, driftFactor);
-      }
-      controller.setWheelSideFrictionStiffness(i, sideFriction);
-      controller.setWheelFrictionSlip(i, frictionSlip);
-    }
-
-    // air control
-    if (!ground.current) {
-      const forwardAngVel = Number(keys.forward) - Number(keys.backward);
-      const sideAngVel = Number(keys.left) - Number(keys.right);
-
-      const angvel = _airControlAngVel.set(
-        forwardAngVel * t,
-        sideAngVel * t,
-        0,
-      );
-      angvel.applyQuaternion(
-        chassisRigidBody.rotation() as unknown as Quaternion,
-      );
-      const currentAngvel = chassisRigidBody.angvel();
-      angvel.add(
-        new Vector3(currentAngvel.x, currentAngvel.y, currentAngvel.z),
-      );
-
-      chassisRigidBody.setAngvel(
-        new rapier.Vector3(angvel.x, angvel.y, angvel.z),
+    // --- air drag + rolling resistance ---
+    chassisRigidBody.resetForces(true);
+    const dragForce = computeDragForce(forces, speed, linvel, engine.throttle);
+    if (dragForce) {
+      chassisRigidBody.addForce(
+        new rapier.Vector3(dragForce.x, dragForce.y, dragForce.z),
         true,
       );
     }
 
-    // reset
+    // --- steering ---
+    const currentSteering = controller.wheelSteering(2) || 0;
+    const steering = computeSteering(
+      currentSteering,
+      forces,
+      keys,
+      engine.speedKmh,
+    );
+    controller.setWheelSteering(2, steering);
+    controller.setWheelSteering(3, steering);
+
+    // --- yaw correction (drift + damping + self-centering) ---
+    const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
+    const hSpeedKmh = hSpeed * 3.6;
+    if (ground.current && !engine.handbrakeActive) {
+      const angvel = chassisRigidBody.angvel();
+      const steerDirection = Number(keys.left) - Number(keys.right);
+      const chassisRot = chassisRigidBody.rotation();
+
+      const newAngvel = computeYawCorrection(
+        linvel,
+        angvel,
+        chassisRot,
+        steerDirection,
+        hSpeedKmh,
+        driftState.current,
+      );
+      if (newAngvel) {
+        chassisRigidBody.setAngvel(
+          new rapier.Vector3(newAngvel.x, newAngvel.y, newAngvel.z),
+          true,
+        );
+      }
+    }
+
+    // --- dynamic wheel friction ---
+    const frictions = computeWheelFriction(
+      wheels,
+      engine.speedKmh,
+      engine.isReversing,
+      engine.steerInput,
+      engine.handbrakeActive,
+    );
+    for (let i = 0; i < wheels.length; i++) {
+      controller.setWheelSideFrictionStiffness(i, frictions[i].sideFriction);
+      controller.setWheelFrictionSlip(i, frictions[i].frictionSlip);
+    }
+
+    // --- air control ---
+    if (!ground.current) {
+      const t = 1.0 - 0.01 ** (1 / 60);
+      const chassisRot = chassisRigidBody.rotation();
+      const currentAngvel = chassisRigidBody.angvel();
+      const newAngvel = computeAirControl(keys, chassisRot, currentAngvel, t);
+      chassisRigidBody.setAngvel(
+        new rapier.Vector3(newAngvel.x, newAngvel.y, newAngvel.z),
+        true,
+      );
+    }
+
+    // --- reset ---
     if (keys.reset) {
       doReset();
     }
-
-    /* camera — chase + mouse orbit */
-
-    const bodyPosition = chassisMeshRef.current.getWorldPosition(_bodyPosition);
-
-    // Extract vehicle yaw from chassis quaternion
-    const chassisRot = chassisRigidBody.rotation();
-    const vehicleYaw = Math.atan2(
-      2 * (chassisRot.w * chassisRot.y + chassisRot.x * chassisRot.z),
-      1 - 2 * (chassisRot.y * chassisRot.y + chassisRot.z * chassisRot.z),
-    );
-
-    // GTA5-style chase cam: camera slows down during sharp turns,
-    // then swings back behind when the turn rate drops.
-    let yawDelta = vehicleYaw - smoothedYaw.current;
-    // Wrap to [-PI, PI] for shortest rotation path
-    yawDelta = ((yawDelta + Math.PI) % (2 * Math.PI)) - Math.PI;
-    if (yawDelta < -Math.PI) yawDelta += 2 * Math.PI;
-
-    // Yaw rate from physics angular velocity (Y axis)
-    const angvel = chassisRigidBody.angvel();
-    const yawRate = Math.abs(angvel.y);
-
-    // High yaw rate → camera gives up following (low lerp)
-    // Low yaw rate → camera snaps back behind (high lerp)
-    const baseLerp = 1.0 - 0.02 ** delta;
-    const sharpTurnFactor = MathUtils.clamp(1.0 - yawRate / 3.0, 0.05, 1.0);
-    smoothedYaw.current += yawDelta * baseLerp * sharpTurnFactor;
-
-    // Decay mouse offset back to 0 after 1s idle (camera returns behind vehicle)
-    const mouseIdleMs = performance.now() - lastMouseMoveTime.current;
-    if (mouseIdleMs > 1000) {
-      const decayRate = 1.0 - 0.05 ** delta;
-      mouseAzimuthOffset.current *= 1.0 - decayRate;
-      mouseElevationOffset.current *= 1.0 - decayRate;
-    }
-
-    // Chase azimuth follows smoothed yaw (azimuth 0 = behind car at +Z)
-    const azimuth = smoothedYaw.current + mouseAzimuthOffset.current;
-    const elevation = MathUtils.clamp(
-      orbitElevation.current + mouseElevationOffset.current,
-      -0.2,
-      Math.PI / 3,
-    );
-
-    const cameraPosition = _cameraPosition;
-    cameraPosition.set(
-      Math.cos(elevation) * Math.sin(azimuth) * ORBIT_DISTANCE,
-      Math.sin(elevation) * ORBIT_DISTANCE + 1.5,
-      Math.cos(elevation) * Math.cos(azimuth) * ORBIT_DISTANCE,
-    );
-    cameraPosition.add(bodyPosition);
-
-    cameraPosition.y = Math.max(
-      cameraPosition.y,
-      (vehicleController.current?.chassis().translation().y ?? 0) + 0.5,
-    );
-
-    smoothedCameraPosition.lerp(cameraPosition, t);
-    state.camera.position.copy(smoothedCameraPosition);
-
-    // camera target
-    const cameraTarget = _cameraTarget;
-    cameraTarget.copy(bodyPosition);
-    cameraTarget.add(cameraTargetOffset);
-    smoothedCameraTarget.lerp(cameraTarget, t);
-
-    state.camera.lookAt(smoothedCameraTarget);
   });
 
   return (

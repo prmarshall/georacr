@@ -34,7 +34,9 @@ src/
 │   ├── UIButton.module.scss
 │   ├── ThirdPersonCamera.tsx            # Unused (camera is inline in Vehicle)
 │   └── Vehicle/
-│       ├── Vehicle.tsx                  # Main component: controls, camera, reset
+│       ├── Vehicle.tsx                  # Thin orchestrator: refs, ground check, Rapier API calls, JSX
+│       ├── vehiclePhysics.ts            # Pure functions: engine, drivetrain, drag, steering, yaw, friction, air control
+│       ├── useChaseCamera.ts            # Chase camera hook (mouse orbit, GTA5-style follow, pointer lock)
 │       ├── useVehicleController.ts      # Hook wrapping Rapier's DynamicRayCastVehicleController
 │       ├── vehicleConfig.ts            # Types, parseVehicleJSON(), loadVehicleEntry(), createWheels()
 │       └── vehicles.ts                 # Auto-discovers src/vehicles/*.json, exports VEHICLES
@@ -99,7 +101,7 @@ When adjusting vehicle configs, keep these relationships in mind:
 
 ## Camera
 
-- Inline in `Vehicle.tsx` (not a separate component).
+- Extracted into `useChaseCamera.ts` hook — self-contained with its own `useFrame`, event listeners, and state refs.
 - **Chase cam (GTA5-style):** Camera follows vehicle heading via smoothed yaw. During sharp turns (high yaw rate), camera follow speed decreases so you see the side/front of the car. When turn rate drops, camera swings back behind.
 - **Mouse orbit override:** Click to capture pointer lock, Escape to release. Mouse input adds azimuth/elevation offset on top of chase cam. After 1 second of mouse idle, offsets decay back to 0 and chase cam takes over.
 - **Elevation:** Base 0.35 rad, mouse adjustable. Inverted (mouse down = camera higher).
