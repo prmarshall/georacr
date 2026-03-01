@@ -1,15 +1,29 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Mesh, Object3D, Quaternion, Vector3 } from "three";
-import { VEHICLE, WHEELS, SPAWN } from "./vehicleConfig";
+import {
+  DEFAULT_VEHICLE_CONFIG,
+  createWheels,
+  type VehicleConfig,
+} from "./vehicleConfig";
 import { useVehicleController } from "./useVehicleController";
 
 export interface VehicleHandle {
   reset: () => void;
+}
+
+interface VehicleProps {
+  config?: VehicleConfig;
 }
 
 const cameraOffset = new Vector3(7, 3, 0);
@@ -20,7 +34,10 @@ const _airControlAngVel = new Vector3();
 const _cameraPosition = new Vector3();
 const _cameraTarget = new Vector3();
 
-export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
+export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
+  { config = DEFAULT_VEHICLE_CONFIG },
+  ref,
+) {
   const { world, rapier } = useRapier();
   const threeControls = useThree((s) => s.controls);
   const [, getKeys] = useKeyboardControls();
@@ -29,10 +46,12 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
   const chassisBodyRef = useRef<RapierRigidBody>(null!);
   const wheelsRef = useRef<(Object3D | null)[]>([]);
 
+  const wheels = useMemo(() => createWheels(config), [config]);
+
   const { vehicleController } = useVehicleController(
     chassisBodyRef,
     wheelsRef as React.RefObject<(Object3D | null)[]>,
-    WHEELS,
+    wheels,
   );
 
   const [smoothedCameraPosition] = useState(new Vector3(0, 100, -300));
@@ -40,22 +59,22 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
 
   const ground = useRef<Collider | null>(null);
 
+  const { forces, spawn, chassis } = config;
+
   const doReset = () => {
     const controller = vehicleController.current;
     if (!controller) return;
-    const chassis = controller.chassis();
-    chassis.setTranslation(new rapier.Vector3(...SPAWN.position), true);
-    const spawnRot = new Euler(...SPAWN.rotation);
+    const body = controller.chassis();
+    body.setTranslation(new rapier.Vector3(...spawn.position), true);
+    const spawnRot = new Euler(...spawn.rotation);
     const spawnQuat = new Quaternion().setFromEuler(spawnRot);
-    chassis.setRotation(spawnQuat, true);
-    chassis.setLinvel(new rapier.Vector3(0, 0, 0), true);
-    chassis.setAngvel(new rapier.Vector3(0, 0, 0), true);
+    body.setRotation(spawnQuat, true);
+    body.setLinvel(new rapier.Vector3(0, 0, 0), true);
+    body.setAngvel(new rapier.Vector3(0, 0, 0), true);
   };
 
-  useImperativeHandle(ref, () => ({ reset: doReset }), [
-    rapier,
-    vehicleController,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- doReset captures only stable refs (rapier, vehicleController)
+  useImperativeHandle(ref, () => ({ reset: doReset }), []);
 
   useFrame((state, delta) => {
     if (
@@ -94,16 +113,16 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
 
     // engine: FWD (wheels 0, 1)
     const throttle = Number(keys.forward) - Number(keys.backward);
-    const engineForce = throttle * VEHICLE.accelerateForce;
+    const engineForce = throttle * forces.accelerate;
     controller.setWheelEngineForce(0, engineForce);
     controller.setWheelEngineForce(1, engineForce);
 
     // brakes: handbrake + rolling resistance + air drag
     const speed = Math.abs(controller.currentVehicleSpeed());
-    const handBrake = Number(keys.brake) * VEHICLE.brakeForce;
+    const handBrake = Number(keys.brake) * forces.brake;
     const rollingResistance =
-      throttle === 0 && speed > 0.01 ? VEHICLE.rollingResistance : 0;
-    const airDrag = VEHICLE.airDragCoefficient * speed * speed;
+      throttle === 0 && speed > 0.01 ? forces.rollingResistance : 0;
+    const airDrag = forces.airDragCoefficient * speed * speed;
     const totalBrake = handBrake + rollingResistance + airDrag;
     controller.setWheelBrake(0, totalBrake);
     controller.setWheelBrake(1, totalBrake);
@@ -115,7 +134,7 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
     const steerDirection = Number(keys.left) - Number(keys.right);
     const steering = MathUtils.lerp(
       currentSteering,
-      VEHICLE.steerAngle * steerDirection,
+      forces.steerAngle * steerDirection,
       0.5,
     );
     controller.setWheelSteering(0, steering);
@@ -155,12 +174,10 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
     const cameraPosition = _cameraPosition;
 
     if (ground.current) {
-      // camera behind chassis
       cameraPosition.copy(cameraOffset);
       const bodyWorldMatrix = chassisMeshRef.current.matrixWorld;
       cameraPosition.applyMatrix4(bodyWorldMatrix);
     } else {
-      // camera behind velocity
       const velocity = chassisRigidBody.linvel();
       cameraPosition.set(velocity.x, velocity.y, velocity.z);
       cameraPosition.normalize();
@@ -191,29 +208,29 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
 
   return (
     <RigidBody
-      position={SPAWN.position}
-      rotation={SPAWN.rotation}
+      position={spawn.position}
+      rotation={spawn.rotation}
       canSleep={false}
       ref={chassisBodyRef}
       colliders={false}
       type="dynamic"
     >
-      <CuboidCollider args={VEHICLE.chassisHalfExtents} />
+      <CuboidCollider args={chassis.halfExtents} />
 
       {/* chassis */}
       <mesh ref={chassisMeshRef}>
         <boxGeometry
           args={[
-            VEHICLE.chassisHalfExtents[0] * 2,
-            VEHICLE.chassisHalfExtents[1] * 2,
-            VEHICLE.chassisHalfExtents[2] * 2,
+            chassis.halfExtents[0] * 2,
+            chassis.halfExtents[1] * 2,
+            chassis.halfExtents[2] * 2,
           ]}
         />
         <meshStandardMaterial color="#e04040" />
       </mesh>
 
       {/* wheels */}
-      {WHEELS.map((wheel, index) => (
+      {wheels.map((wheel, index) => (
         <group
           key={index}
           ref={(ref) => {
@@ -223,11 +240,11 @@ export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
         >
           <group rotation-x={-Math.PI / 2}>
             <mesh>
-              <cylinderGeometry args={[0.15, 0.15, 0.25, 16]} />
+              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 16]} />
               <meshStandardMaterial color="#222" />
             </mesh>
             <mesh scale={1.01}>
-              <cylinderGeometry args={[0.15, 0.15, 0.25, 6]} />
+              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 6]} />
               <meshStandardMaterial color="#fff" wireframe />
             </mesh>
           </group>
