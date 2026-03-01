@@ -47,7 +47,7 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Controller:** Rapier's built-in `DynamicRayCastVehicleController` via `world.createVehicleController(chassis)`. Do NOT use manual raycast suspension or Hooke's Law.
 - **Drive type:** Configurable per vehicle via `driveType` field (`"FWD"`, `"RWD"`, `"AWD"`, default `"FWD"`). Sedan = FWD, Sports = RWD, Tractor = RWD. Engine force applied to appropriate wheels (0,1 = rear, 2,3 = front).
 - **Deceleration:** Rolling resistance (constant force when no throttle) + air drag (force proportional to speed²). Both applied via `chassisRigidBody.addForce()` — NOT `setWheelBrake`, which clamps internally and causes artificial speed caps.
-- **Handbrake (Space):** Realistic rear-wheel-only brake. Locks rear wheels — at low speed wheels hold firm (full friction), at 30+ km/h rear loses grip for drift/spin (friction drops to 10%). On RWD/AWD, rear engine force is killed when handbrake active (brake and engine fight over same wheels). On FWD, front wheels still drive. Uses both `setWheelFrictionSlip` and `setWheelSideFrictionStiffness` dynamically.
+- **Handbrake (Space):** Realistic rear-wheel-only brake. Locks rear wheels — at low speed wheels hold firm (full friction), at 30+ km/h rear loses grip for drift/spin (friction drops to 40%). On RWD/AWD, rear engine force is killed when handbrake active (brake and engine fight over same wheels). On FWD, front wheels still drive. Uses both `setWheelFrictionSlip` and `setWheelSideFrictionStiffness` dynamically. Drift+self-centering system disabled during handbrake to prevent oscillation.
 - **Controls:** WASD + Space (handbrake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
@@ -59,20 +59,23 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Registry:** `vehicles.ts` auto-discovers all `src/vehicles/*.json` files via `import.meta.glob`. Exports `VEHICLES: VehicleEntry[]`.
 - **Validation:** `parseVehicleJSON(raw: unknown)` validates required fields at runtime, replacing unsafe type casts and catching malformed configs early.
 - **Selector:** Chevron UI in `App.tsx` cycles through `VEHICLES`. Changing index remounts `Vehicle` via React `key`.
-- **Steering response:** Lerp factor 0.75 in Vehicle.tsx. Higher = snappier turn-in, lower = more gradual.
+- **Steering response:** Lerp factor 0.75 when turning in, 0.95 when centering (fast but smooth — instant snap causes force discontinuity and spins on low-grip vehicles).
 - **Low-speed steer boost:** Steering angle scales from 1.5x at standstill to 1.0x at 20+ km/h for tighter parking turns.
-- **FWD throttle reduction:** Engine force reduced 40% when steering on FWD vehicles (front tires share grip between drive + turn). Does not apply to RWD/AWD.
+- **FWD throttle reduction:** Engine force reduced up to 40% when steering on FWD vehicles. Speed-dependent: no penalty at standstill, full penalty at 30+ km/h (grip budget only matters at speed). Does not apply to RWD/AWD.
 - **Reverse side friction:** Front wheel `sideFrictionStiffness` dynamically reduced to 20% when reversing + steering, preventing front wheels from anchoring and causing pivot-spin. Resets to normal immediately when going forward.
+- **Yaw-rate damping:** When not steering, Y angular velocity is damped per frame. Scales with spin rate: gentle (5%) at low yaw rates, aggressive (30%) at high rates to kill post-turn spins. Do NOT use `angularDamping` on RigidBody — it damps all axes and fights intentional turns.
+- **Self-centering:** When grounded, not steering, hSpeed > 15 km/h, and yaw rate < 0.5, a corrective yaw aligns heading with velocity direction (simulates caster angle). Gated by yaw rate to prevent oscillation during spins.
+- **Steering drift:** Smoothed random yaw perturbation (target picked ~2% of frames, lerped at 5%/frame) prevents perfectly straight driving. Equalizes straight-line and post-turn top speed. Disabled during handbrake.
 
 ### Vehicle Tuning Guide
 
 When adjusting vehicle configs, keep these relationships in mind:
 
 - **Density scaling:** When increasing `chassis.density` by N, also scale by N: `accelerate`, `brake`, `suspensionStiffness`, `sideFrictionStiffness`, `rollingResistance`, `airDragCoefficient`, `suspensionDamping`.
-- **Air drag coefficient:** Determines top speed. Formula: `airDragCoefficient = totalEngineForce / targetTopSpeed²` (speed in m/s, totalEngineForce = accelerate × numDriveWheels). Applied via `addForce` on chassis, NOT `setWheelBrake`.
+- **Air drag coefficient:** Determines top speed. Theoretical formula: `airDragCoefficient = totalEngineForce / targetTopSpeed²` (speed in m/s, totalEngineForce = accelerate × numDriveWheels). Applied via `addForce` on chassis, NOT `setWheelBrake`. **In practice, set ~50% lower** than the formula suggests to account for overhead from steering drift correction, angular damping, and side friction.
 - **Handling (understeer/oversteer):** Controlled by `sideFrictionStiffness` (lateral grip) and `frictionSlip` (grip before sliding). Higher values = more planted. Sedan: 4/1.3, Sports: 15/1.4 (density 3), Tractor: 40/2.0 (density 10).
 - **Mixed wheel sizes:** When rear and front wheels have different radii, offset the smaller wheels' Y connection point by the radius difference to keep the chassis level. E.g. tractor rear 0.65, front 0.4 → front Y lowered by 0.25.
-- **Acceleration feel:** Rapier mass = collider volume \* density. F=ma gives theoretical 0-speed time. Sports car (mass ~22.5, force 180) → ~8 m/s² → 0-50 km/h in ~1.7s theoretical, ~2-3s with drag. Acceptable for sporty car, a true supercar would need more force.
+- **Acceleration feel:** Rapier mass = collider volume \* density. F=ma gives theoretical 0-speed time. Sports car reaches 200 km/h in ~20s (accelerate 100, density 3, 5-speed gearbox).
 - **Wheel visual width:** `radius * 0.7` — proportional to wheel size.
 - **Wheel X placement:** Must be >= chassis halfExtent X to avoid clipping into the body.
 

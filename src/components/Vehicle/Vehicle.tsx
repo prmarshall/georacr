@@ -47,6 +47,10 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   const gl = useThree((s) => s.gl);
   const [, getKeys] = useKeyboardControls();
 
+  // Steering drift state
+  const driftTarget = useRef(0);
+  const driftCurrent = useRef(0);
+
   // Camera orbit state — mouse offset decays back to 0 (behind vehicle)
   const mouseAzimuthOffset = useRef(0);
   const mouseElevationOffset = useRef(0);
@@ -233,12 +237,10 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const steerDirection = Number(keys.left) - Number(keys.right);
     const targetSteering =
       forces.steerAngle * lowSpeedSteerBoost * steerDirection;
-    // Lerp toward target when steering, snap to zero when released
+    // Lerp toward target: 0.75 when turning in, 0.95 when centering (fast but smooth)
     const currentSteering = controller.wheelSteering(2) || 0;
-    const steering =
-      steerDirection === 0
-        ? 0
-        : MathUtils.lerp(currentSteering, targetSteering, 0.75);
+    const steerLerp = steerDirection === 0 ? 0.95 : 0.75;
+    const steering = MathUtils.lerp(currentSteering, targetSteering, steerLerp);
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
 
@@ -248,30 +250,53 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     // Use horizontal speed to avoid noisy atan2 from vertical suspension bounce.
     const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
     const hSpeedKmh = hSpeed * 3.6;
-    if (ground.current && hSpeedKmh > 15) {
+    if (ground.current && hSpeedKmh > 15 && !handbrakeActive) {
       const angvel = chassisRigidBody.angvel();
-      const drift = (Math.random() - 0.5) * 0.006 * (hSpeedKmh / 100);
-
-      // Self-centering: align heading with velocity when not steering
-      let correction = 0;
-      if (steerDirection === 0) {
-        const chassisRot = chassisRigidBody.rotation();
-        const fx =
-          2 * (chassisRot.x * chassisRot.z + chassisRot.w * chassisRot.y);
-        const fz =
-          1 - 2 * (chassisRot.x * chassisRot.x + chassisRot.y * chassisRot.y);
-        const headingYaw = Math.atan2(-fx, -fz);
-        const velocityYaw = Math.atan2(linvel.x, linvel.z);
-        let yawError = headingYaw - velocityYaw;
-        yawError = ((yawError + Math.PI) % (2 * Math.PI)) - Math.PI;
-        if (yawError < -Math.PI) yawError += 2 * Math.PI;
-        correction = yawError * 2.0;
+      // Smoothly wander toward a new random drift target
+      if (Math.random() < 0.02) {
+        driftTarget.current = (Math.random() - 0.5) * 0.006 * (hSpeedKmh / 100);
       }
+      driftCurrent.current +=
+        (driftTarget.current - driftCurrent.current) * 0.05;
+      const drift = driftCurrent.current;
 
-      chassisRigidBody.setAngvel(
-        new rapier.Vector3(angvel.x, angvel.y + drift + correction, angvel.z),
-        true,
-      );
+      // When not steering: damp yaw then self-center once stable
+      if (steerDirection === 0) {
+        const yawRate = Math.abs(angvel.y);
+        // Aggressive damping for spins, gentle for normal driving
+        const dampFactor = MathUtils.lerp(
+          0.95,
+          0.7,
+          MathUtils.clamp(yawRate / 3, 0, 1),
+        );
+        let newYaw = angvel.y * dampFactor + drift;
+
+        // Self-centering only when yaw rate is low (not during spins —
+        // atan2 is unstable at high spin rates and correction oscillates)
+        if (yawRate < 0.5) {
+          const chassisRot = chassisRigidBody.rotation();
+          const fx =
+            2 * (chassisRot.x * chassisRot.z + chassisRot.w * chassisRot.y);
+          const fz =
+            1 - 2 * (chassisRot.x * chassisRot.x + chassisRot.y * chassisRot.y);
+          const headingYaw = Math.atan2(-fx, -fz);
+          const velocityYaw = Math.atan2(linvel.x, linvel.z);
+          let yawError = headingYaw - velocityYaw;
+          yawError = ((yawError + Math.PI) % (2 * Math.PI)) - Math.PI;
+          if (yawError < -Math.PI) yawError += 2 * Math.PI;
+          newYaw += yawError * 2.0;
+        }
+
+        chassisRigidBody.setAngvel(
+          new rapier.Vector3(angvel.x, newYaw, angvel.z),
+          true,
+        );
+      } else {
+        chassisRigidBody.setAngvel(
+          new rapier.Vector3(angvel.x, angvel.y + drift, angvel.z),
+          true,
+        );
+      }
     }
 
     // Dynamic wheel friction
@@ -287,10 +312,11 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       if (isFront && reverseSteering) sideFriction *= 0.2;
       // Handbrake: at speed, locked rear wheels lose grip and slide.
       // At low speed, wheels lock in place (full friction retained).
+      // Floor at 40% to prevent uncontrollable spins (especially FWD).
       if (isRear && handbrakeActive) {
         const driftFactor = MathUtils.clamp(speedKmh / 30, 0, 1);
-        sideFriction *= MathUtils.lerp(1.0, 0.1, driftFactor);
-        frictionSlip *= MathUtils.lerp(1.0, 0.1, driftFactor);
+        sideFriction *= MathUtils.lerp(1.0, 0.4, driftFactor);
+        frictionSlip *= MathUtils.lerp(1.0, 0.4, driftFactor);
       }
       controller.setWheelSideFrictionStiffness(i, sideFriction);
       controller.setWheelFrictionSlip(i, frictionSlip);
@@ -402,7 +428,6 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       ref={chassisBodyRef}
       colliders={false}
       type="dynamic"
-      angularDamping={0.5}
     >
       <CuboidCollider
         args={chassis.halfExtents}
