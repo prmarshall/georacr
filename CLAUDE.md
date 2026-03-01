@@ -4,22 +4,30 @@
 
 - Install: `npm install`
 - Dev: `npm run dev`
+- Build: `npm run build`
 - Lint: `npm run lint`
 
 ## Tech Stack
 
-- React + Vite + TypeScript
-- Three.js + R3F (React Three Fiber)
-- Rapier (Physics)
+- **Framework:** React + Vite + TypeScript
+- **3D Engine:** Three.js + React Three Fiber (R3F)
+- **Physics:** @react-three/rapier (Raycast Vehicle)
+- **Helpers:** @react-three/drei
 
 ## Guidelines
 
-- Use Functional Components with TypeScript interfaces.
-- For 3D math, prefer Three.js native classes (Vector3, Euler).
-- Keep components modular (separate Player, Map, and UI).
+- **Component Pattern:** Use functional components. Separate `Chassis.tsx`, `Wheel.tsx`, and `Vehicle.tsx`.
+- **Physics Logic:** Use Rapier's `useRaycastVehicle` hook for car dynamics rather than standard rigid body forces for wheels.
+- **Math:** Use `THREE.Vector3` and `THREE.Quaternion` for all camera following and movement logic.
+- **State:** Use `zustand` or simple React state for game-wide variables (speed, current street, score).
 
 ## Agentic Environment
 
-- **Safety Hooks:** Active. Recursive deletes and edits to `.env`/`.git` are blocked.
-- **Auto-Format:** Active. Files are linted/formatted on save. No need to run lint manually.
-- **Workflow:** Always verify 3D renders in the browser after a `Write` tool succeeds.
+- **Safety Hooks:** Active. `PreToolUse` blocks recursive deletes and `.env` edits.
+- **Quality Gate:** `PostToolUse` triggers `tsc` and `lint --fix` on every file change.
+- **Integrity:** `SubagentStop` runs `npm run build` to prevent broken code from being finalized.
+
+## Camera System
+
+- **View:** Third-person following camera.
+- **Implementation:** Use a "Spring Arm" or lerped offset logic. Do not hard-parent the camera to the chassis mesh.

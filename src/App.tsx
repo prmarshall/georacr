@@ -1,35 +1,44 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
-import "./App.css";
+import { useRef } from "react";
+import { Canvas } from "@react-three/fiber";
+import { KeyboardControls } from "@react-three/drei";
+import { Physics } from "@react-three/rapier";
+import type { RapierRigidBody } from "@react-three/rapier";
+import { Vehicle } from "./components/Vehicle/Vehicle";
+import { Floor } from "./components/Floor";
+import { ThirdPersonCamera } from "./components/ThirdPersonCamera";
 
-function App() {
-  const [count, setCount] = useState(0);
+const keyMap = [
+  { name: "forward", keys: ["KeyW", "ArrowUp"] },
+  { name: "backward", keys: ["KeyS", "ArrowDown"] },
+  { name: "left", keys: ["KeyA", "ArrowLeft"] },
+  { name: "right", keys: ["KeyD", "ArrowRight"] },
+  { name: "brake", keys: ["Space"] },
+];
+
+function Scene() {
+  const vehicleRef = useRef<RapierRigidBody>(null);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <Physics gravity={[0, -9.81, 0]}>
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[10, 15, 10]} intensity={1} castShadow />
+      <Floor />
+      <Vehicle ref={vehicleRef} />
+      <ThirdPersonCamera targetRef={vehicleRef} />
+    </Physics>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <KeyboardControls map={keyMap}>
+      <Canvas
+        shadows
+        camera={{ fov: 60, near: 0.1, far: 1000 }}
+        style={{ width: "100vw", height: "100vh" }}
+      >
+        <Scene />
+      </Canvas>
+    </KeyboardControls>
+  );
+}
