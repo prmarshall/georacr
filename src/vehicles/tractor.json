@@ -8,8 +8,8 @@
     "accelerate": 1,
     "brake": 0.05,
     "steerAngleDeg": 12,
-    "rollingResistance": 0.005,
-    "airDragCoefficient": 0.001
+    "rollingResistance": 0.008,
+    "airDragCoefficient": 0.016
   },
   "wheels": {
     "defaults": {

@@ -22,16 +22,76 @@ function useCheckerTexture(size = 8, repeats = 250) {
   }, [size, repeats]);
 }
 
+function useRoadTexture() {
+  return useMemo(() => {
+    // One road segment: dark asphalt with a dashed center line
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+    // Asphalt
+    ctx.fillStyle = "#3a3a3a";
+    ctx.fillRect(0, 0, 64, 256);
+    // Edge lines (white)
+    ctx.fillStyle = "#cccccc";
+    ctx.fillRect(0, 0, 2, 256);
+    ctx.fillRect(62, 0, 2, 256);
+    // Center dashed line (yellow)
+    ctx.fillStyle = "#cc9900";
+    ctx.fillRect(31, 0, 2, 128);
+    const tex = new CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = RepeatWrapping;
+    // Repeat along length: 1000m road, each tile covers ~4m
+    tex.repeat.set(1, 250);
+    tex.magFilter = NearestFilter;
+    return tex;
+  }, []);
+}
+
+/** 100m distance markers along the road */
+function RoadMarkers() {
+  const markers = [];
+  for (let i = 1; i <= 10; i++) {
+    const z = -i * 100;
+    markers.push(
+      <mesh key={i} position={[4.5, 0.02, z]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[2, 1]} />
+        <meshBasicMaterial color={i === 10 ? "#cc3333" : "#ffffff"} />
+      </mesh>,
+      <mesh
+        key={`label-${i}`}
+        position={[-4.5, 0.02, z]}
+        rotation-x={-Math.PI / 2}
+      >
+        <planeGeometry args={[2, 1]} />
+        <meshBasicMaterial color={i === 10 ? "#cc3333" : "#ffffff"} />
+      </mesh>,
+    );
+  }
+  return <>{markers}</>;
+}
+
+const ROAD_WIDTH = 8;
+const ROAD_LENGTH = 1000;
+
 export function Floor() {
   const checkerMap = useCheckerTexture();
+  const roadMap = useRoadTexture();
 
   return (
     <RigidBody type="fixed" friction={1.5}>
       <CuboidCollider args={[500, 0.1, 500]} friction={1.5} />
+      {/* Ground */}
       <mesh receiveShadow position={[0, -0.1, 0]}>
         <boxGeometry args={[1000, 0.2, 1000]} />
         <meshStandardMaterial map={checkerMap} />
       </mesh>
+      {/* 1km road — starts at spawn, runs in -Z direction */}
+      <mesh position={[0, 0.01, -ROAD_LENGTH / 2]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[ROAD_WIDTH, ROAD_LENGTH]} />
+        <meshStandardMaterial map={roadMap} />
+      </mesh>
+      <RoadMarkers />
     </RigidBody>
   );
 }

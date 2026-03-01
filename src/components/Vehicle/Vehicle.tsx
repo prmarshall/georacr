@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -13,14 +12,9 @@ import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Object3D, Quaternion, Vector3 } from "three";
-import {
-  createWheels,
-  createWheelsFromPositions,
-  type VehicleConfig,
-} from "./vehicleConfig";
+import { createWheels, type VehicleConfig } from "./vehicleConfig";
 import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
-import { VehicleModel } from "./VehicleModel";
 
 export interface VehicleHandle {
   reset: () => void;
@@ -81,24 +75,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   const chassisBodyRef = useRef<RapierRigidBody>(null!);
   const wheelsRef = useRef<(Object3D | null)[]>([]);
 
-  const [modelWheelPositions, setModelWheelPositions] = useState<
-    Vector3[] | null
-  >(null);
-
-  const handleWheelPositions = useCallback(
-    (positions: Vector3[]) => setModelWheelPositions(positions),
-    [],
-  );
-
-  // For model vehicles, wait for the model to report wheel positions before
-  // creating any wheels — avoids creating a throwaway vehicle controller with
-  // wrong positions that gets immediately destroyed and recreated.
-  const wheels = useMemo(() => {
-    if (config.model && !modelWheelPositions) return [];
-    return modelWheelPositions
-      ? createWheelsFromPositions(modelWheelPositions, config)
-      : createWheels(config);
-  }, [config, modelWheelPositions]);
+  const wheels = useMemo(() => createWheels(config), [config]);
 
   const { vehicleController } = useVehicleController(
     chassisBodyRef,
@@ -106,7 +83,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     wheels,
   );
 
-  const [smoothedCameraPosition] = useState(new Vector3(0, 100, -300));
+  const [smoothedCameraPosition] = useState(new Vector3(0, 5, 8));
   const [smoothedCameraTarget] = useState(new Vector3());
 
   const ground = useRef<Collider | null>(null);
@@ -259,54 +236,39 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     >
       <CuboidCollider args={chassis.halfExtents} />
 
-      {config.model ? (
-        <VehicleModel
-          ref={chassisMeshRef}
-          url={config.model}
-          wheelsRef={wheelsRef as React.RefObject<(Object3D | null)[]>}
-          onWheelPositions={handleWheelPositions}
+      {/* chassis */}
+      <mesh ref={chassisMeshRef}>
+        <boxGeometry
+          args={[
+            chassis.halfExtents[0] * 2,
+            chassis.halfExtents[1] * 2,
+            chassis.halfExtents[2] * 2,
+          ]}
         />
-      ) : (
-        <>
-          {/* chassis */}
-          <mesh ref={chassisMeshRef}>
-            <boxGeometry
-              args={[
-                chassis.halfExtents[0] * 2,
-                chassis.halfExtents[1] * 2,
-                chassis.halfExtents[2] * 2,
-              ]}
-            />
-            <meshStandardMaterial color={config.color} />
-          </mesh>
+        <meshStandardMaterial color={config.color} />
+      </mesh>
 
-          {/* wheels */}
-          {wheels.map((wheel, index) => (
-            <group
-              key={index}
-              ref={(ref) => {
-                wheelsRef.current[index] = ref;
-              }}
-              position={wheel.position}
-            >
-              <group rotation-z={-Math.PI / 2}>
-                <mesh>
-                  <cylinderGeometry
-                    args={[wheel.radius, wheel.radius, 0.25, 16]}
-                  />
-                  <meshStandardMaterial color="#222" />
-                </mesh>
-                <mesh scale={1.01}>
-                  <cylinderGeometry
-                    args={[wheel.radius, wheel.radius, 0.25, 6]}
-                  />
-                  <meshStandardMaterial color="#fff" wireframe />
-                </mesh>
-              </group>
-            </group>
-          ))}
-        </>
-      )}
+      {/* wheels */}
+      {wheels.map((wheel, index) => (
+        <group
+          key={index}
+          ref={(ref) => {
+            wheelsRef.current[index] = ref;
+          }}
+          position={wheel.position}
+        >
+          <group rotation-z={-Math.PI / 2}>
+            <mesh>
+              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 16]} />
+              <meshStandardMaterial color="#222" />
+            </mesh>
+            <mesh scale={1.01}>
+              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 6]} />
+              <meshStandardMaterial color="#fff" wireframe />
+            </mesh>
+          </group>
+        </group>
+      ))}
     </RigidBody>
   );
 });

@@ -20,7 +20,6 @@ export interface WheelPlacement extends Partial<WheelDefaults> {
 
 export interface VehicleConfig {
   color: string;
-  model?: string;
   chassis: {
     halfExtents: Vec3Tuple;
   };
@@ -59,7 +58,6 @@ export interface WheelInfo {
 export interface VehicleConfigJSON {
   name: string;
   color: string;
-  model?: string;
   chassis: VehicleConfig["chassis"];
   forces: Omit<VehicleConfig["forces"], "steerAngle"> & {
     steerAngleDeg: number;
@@ -128,28 +126,4 @@ export function createWheels(config: VehicleConfig): WheelInfo[] {
       placement.sideFrictionStiffness ?? defaults.sideFrictionStiffness,
     radius: placement.radius ?? defaults.radius,
   }));
-}
-
-export function createWheelsFromPositions(
-  positions: Vector3[],
-  config: VehicleConfig,
-): WheelInfo[] {
-  const { defaults, placements } = config.wheels;
-  return positions.map((position, i) => {
-    const placement = placements[i];
-    return {
-      position,
-      axleCs: new Vector3(...(placement?.axleCs ?? defaults.axleCs)),
-      suspensionRestLength:
-        placement?.suspensionRestLength ?? defaults.suspensionRestLength,
-      suspensionStiffness:
-        placement?.suspensionStiffness ?? defaults.suspensionStiffness,
-      maxSuspensionTravel:
-        placement?.maxSuspensionTravel ?? defaults.maxSuspensionTravel,
-      frictionSlip: placement?.frictionSlip ?? defaults.frictionSlip,
-      sideFrictionStiffness:
-        placement?.sideFrictionStiffness ?? defaults.sideFrictionStiffness,
-      radius: placement?.radius ?? defaults.radius,
-    };
-  });
 }
