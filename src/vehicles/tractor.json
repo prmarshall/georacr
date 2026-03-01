@@ -1,6 +1,7 @@
 {
   "name": "Tractor",
   "color": "#4a8c2a",
+  "driveType": "RWD",
   "chassis": {
     "halfExtents": [1.1, 1.0, 1.8],
     "density": 10

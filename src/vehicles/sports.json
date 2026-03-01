@@ -1,24 +1,26 @@
 {
   "name": "Sports",
   "color": "#cc2020",
+  "driveType": "RWD",
   "chassis": {
-    "halfExtents": [0.95, 0.45, 2.2]
+    "halfExtents": [0.95, 0.45, 2.2],
+    "density": 3
   },
   "forces": {
-    "accelerate": 60,
-    "brake": 1.0,
+    "accelerate": 180,
+    "brake": 3.0,
     "steerAngleDeg": 30,
-    "rollingResistance": 0.008,
-    "airDragCoefficient": 0.004
+    "rollingResistance": 0.024,
+    "airDragCoefficient": 0.012
   },
   "wheels": {
     "defaults": {
       "axleCs": [1, 0, 0],
       "suspensionRestLength": 0.18,
-      "suspensionStiffness": 45,
-      "suspensionDamping": 4,
+      "suspensionStiffness": 135,
+      "suspensionDamping": 12,
       "maxSuspensionTravel": 0.2,
-      "sideFrictionStiffness": 5,
+      "sideFrictionStiffness": 15,
       "frictionSlip": 1.4,
       "radius": 0.34
     },

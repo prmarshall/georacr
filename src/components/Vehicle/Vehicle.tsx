@@ -43,9 +43,12 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   const gl = useThree((s) => s.gl);
   const [, getKeys] = useKeyboardControls();
 
-  // Mouse orbit state
-  const orbitAzimuth = useRef(0); // behind car (+Z direction, car faces -Z)
+  // Camera orbit state — mouse offset decays back to 0 (behind vehicle)
+  const mouseAzimuthOffset = useRef(0);
+  const mouseElevationOffset = useRef(0);
   const orbitElevation = useRef(0.35);
+  const lastMouseMoveTime = useRef(0);
+  const smoothedYaw = useRef(0);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -56,12 +59,9 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
     const handleMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
-      orbitAzimuth.current -= e.movementX * MOUSE_SENSITIVITY;
-      orbitElevation.current = MathUtils.clamp(
-        orbitElevation.current + e.movementY * MOUSE_SENSITIVITY,
-        -0.2, // slight below horizon
-        Math.PI / 3, // 60° above
-      );
+      mouseAzimuthOffset.current -= e.movementX * MOUSE_SENSITIVITY;
+      mouseElevationOffset.current += e.movementY * MOUSE_SENSITIVITY;
+      lastMouseMoveTime.current = performance.now();
     };
 
     canvas.addEventListener("click", handleClick);
@@ -90,7 +90,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
   const ground = useRef<Collider | null>(null);
 
-  const { forces, spawn, chassis } = config;
+  const { forces, spawn, chassis, driveType } = config;
 
   const doReset = () => {
     const controller = vehicleController.current;
@@ -147,11 +147,19 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       ground.current = raycastResult.collider;
     }
 
-    // engine: FWD (wheels 2, 3 = front)
+    // engine force — drive type determines which wheels receive power
     const throttle = Number(keys.forward) - Number(keys.backward);
-    const engineForce = throttle * forces.accelerate;
-    controller.setWheelEngineForce(2, engineForce);
-    controller.setWheelEngineForce(3, engineForce);
+    const steerInput = Math.abs(Number(keys.left) - Number(keys.right));
+    // FWD: reduce throttle when steering (front tires share grip between drive + turn)
+    const steerThrottleReduction =
+      driveType === "FWD" ? 1.0 - steerInput * 0.4 : 1.0;
+    const engineForce = throttle * forces.accelerate * steerThrottleReduction;
+    const driveRear = driveType === "RWD" || driveType === "AWD";
+    const driveFront = driveType === "FWD" || driveType === "AWD";
+    controller.setWheelEngineForce(0, driveRear ? engineForce : 0);
+    controller.setWheelEngineForce(1, driveRear ? engineForce : 0);
+    controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
+    controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
 
     // brakes: handbrake + rolling resistance + air drag
     const linvel = chassisRigidBody.linvel();
@@ -170,15 +178,34 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelBrake(3, totalBrake);
 
     // steering: front wheels (2, 3) with smoothing
+    // At low speed, allow sharper steering (up to 1.5x) for tight manoeuvres
+    const speedKmh = speed * 3.6;
+    const isReversing = throttle < 0;
+    const lowSpeedSteerBoost = MathUtils.lerp(
+      1.5,
+      1.0,
+      MathUtils.clamp(speedKmh / 20, 0, 1),
+    );
     const currentSteering = controller.wheelSteering(2) || 0;
     const steerDirection = Number(keys.left) - Number(keys.right);
     const steering = MathUtils.lerp(
       currentSteering,
-      forces.steerAngle * steerDirection,
+      forces.steerAngle * lowSpeedSteerBoost * steerDirection,
       0.75,
     );
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
+
+    // Dynamic side friction: reduce front wheel lateral grip when reversing + steering
+    // so they can slide into a proper arc instead of anchoring and pivoting
+    const reverseSteering = isReversing && steerInput > 0;
+    for (let i = 0; i < wheels.length; i++) {
+      const baseSideFriction = wheels[i].sideFrictionStiffness;
+      const isFront = i >= 2;
+      const sideFriction =
+        isFront && reverseSteering ? baseSideFriction * 0.2 : baseSideFriction;
+      controller.setWheelSideFrictionStiffness(i, sideFriction);
+    }
 
     // air control
     if (!ground.current) {
@@ -209,12 +236,49 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       doReset();
     }
 
-    /* camera — mouse orbit */
+    /* camera — chase + mouse orbit */
 
     const bodyPosition = chassisMeshRef.current.getWorldPosition(_bodyPosition);
 
-    const azimuth = orbitAzimuth.current;
-    const elevation = orbitElevation.current;
+    // Extract vehicle yaw from chassis quaternion
+    const chassisRot = chassisRigidBody.rotation();
+    const vehicleYaw = Math.atan2(
+      2 * (chassisRot.w * chassisRot.y + chassisRot.x * chassisRot.z),
+      1 - 2 * (chassisRot.y * chassisRot.y + chassisRot.z * chassisRot.z),
+    );
+
+    // GTA5-style chase cam: camera slows down during sharp turns,
+    // then swings back behind when the turn rate drops.
+    let yawDelta = vehicleYaw - smoothedYaw.current;
+    // Wrap to [-PI, PI] for shortest rotation path
+    yawDelta = ((yawDelta + Math.PI) % (2 * Math.PI)) - Math.PI;
+    if (yawDelta < -Math.PI) yawDelta += 2 * Math.PI;
+
+    // Yaw rate from physics angular velocity (Y axis)
+    const angvel = chassisRigidBody.angvel();
+    const yawRate = Math.abs(angvel.y);
+
+    // High yaw rate → camera gives up following (low lerp)
+    // Low yaw rate → camera snaps back behind (high lerp)
+    const baseLerp = 1.0 - 0.02 ** delta;
+    const sharpTurnFactor = MathUtils.clamp(1.0 - yawRate / 3.0, 0.05, 1.0);
+    smoothedYaw.current += yawDelta * baseLerp * sharpTurnFactor;
+
+    // Decay mouse offset back to 0 after 1s idle (camera returns behind vehicle)
+    const mouseIdleMs = performance.now() - lastMouseMoveTime.current;
+    if (mouseIdleMs > 1000) {
+      const decayRate = 1.0 - 0.05 ** delta;
+      mouseAzimuthOffset.current *= 1.0 - decayRate;
+      mouseElevationOffset.current *= 1.0 - decayRate;
+    }
+
+    // Chase azimuth follows smoothed yaw (azimuth 0 = behind car at +Z)
+    const azimuth = smoothedYaw.current + mouseAzimuthOffset.current;
+    const elevation = MathUtils.clamp(
+      orbitElevation.current + mouseElevationOffset.current,
+      -0.2,
+      Math.PI / 3,
+    );
 
     const cameraPosition = _cameraPosition;
     cameraPosition.set(

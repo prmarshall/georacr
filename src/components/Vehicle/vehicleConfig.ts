@@ -19,8 +19,11 @@ export interface WheelPlacement extends Partial<WheelDefaults> {
   position: Vec3Tuple;
 }
 
+export type DriveType = "FWD" | "RWD" | "AWD";
+
 export interface VehicleConfig {
   color: string;
+  driveType: DriveType;
   chassis: {
     halfExtents: Vec3Tuple;
     density?: number;
@@ -61,6 +64,7 @@ export interface WheelInfo {
 export interface VehicleConfigJSON {
   name: string;
   color: string;
+  driveType?: DriveType;
   chassis: VehicleConfig["chassis"];
   forces: Omit<VehicleConfig["forces"], "steerAngle"> & {
     steerAngleDeg: number;
@@ -97,12 +101,13 @@ export interface VehicleEntry {
 }
 
 export function loadVehicleEntry(json: VehicleConfigJSON): VehicleEntry {
-  const { name, forces, ...rest } = json;
+  const { name, driveType, forces, ...rest } = json;
   const { steerAngleDeg, ...restForces } = forces;
   return {
     name,
     config: {
       ...rest,
+      driveType: driveType ?? "FWD",
       forces: {
         ...restForces,
         steerAngle: MathUtils.degToRad(steerAngleDeg),
