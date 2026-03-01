@@ -1,15 +1,16 @@
 {
-  "name": "default",
-  "color": "#e04040",
+  "name": "Muscle",
+  "color": "#cc3333",
+  "model": "/models/car/muscle.glb",
   "chassis": {
-    "halfExtents": [0.8, 0.2, 0.4]
+    "halfExtents": [0.9, 0.2, 0.45]
   },
   "forces": {
-    "accelerate": 3,
-    "brake": 0.05,
+    "accelerate": 5,
+    "brake": 0.06,
     "steerAngleDeg": 7.5,
     "rollingResistance": 0.003,
-    "airDragCoefficient": 0.0005
+    "airDragCoefficient": 0.0004
   },
   "wheels": {
     "defaults": {
@@ -22,10 +23,10 @@
       "radius": 0.15
     },
     "placements": [
-      { "position": [0.65, -0.15, -0.45] },
-      { "position": [0.65, -0.15, 0.45] },
-      { "position": [-0.65, -0.15, -0.45] },
-      { "position": [-0.65, -0.15, 0.45] }
+      { "position": [0.7, -0.15, -0.45] },
+      { "position": [0.7, -0.15, 0.45] },
+      { "position": [-0.7, -0.15, -0.45] },
+      { "position": [-0.7, -0.15, 0.45] }
     ]
   },
   "spawn": {

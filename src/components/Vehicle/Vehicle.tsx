@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -10,10 +11,15 @@ import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
-import { Euler, MathUtils, Mesh, Object3D, Quaternion, Vector3 } from "three";
-import { createWheels, type VehicleConfig } from "./vehicleConfig";
+import { Euler, MathUtils, Object3D, Quaternion, Vector3 } from "three";
+import {
+  createWheels,
+  createWheelsFromPositions,
+  type VehicleConfig,
+} from "./vehicleConfig";
 import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
+import { VehicleModel } from "./VehicleModel";
 
 export interface VehicleHandle {
   reset: () => void;
@@ -39,11 +45,26 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   const threeControls = useThree((s) => s.controls);
   const [, getKeys] = useKeyboardControls();
 
-  const chassisMeshRef = useRef<Mesh>(null!);
+  const chassisMeshRef = useRef<Object3D>(null!);
   const chassisBodyRef = useRef<RapierRigidBody>(null!);
   const wheelsRef = useRef<(Object3D | null)[]>([]);
 
-  const wheels = useMemo(() => createWheels(config), [config]);
+  const [modelWheelPositions, setModelWheelPositions] = useState<
+    Vector3[] | null
+  >(null);
+
+  const handleWheelPositions = useCallback(
+    (positions: Vector3[]) => setModelWheelPositions(positions),
+    [],
+  );
+
+  const wheels = useMemo(
+    () =>
+      modelWheelPositions
+        ? createWheelsFromPositions(modelWheelPositions, config)
+        : createWheels(config),
+    [config, modelWheelPositions],
+  );
 
   const { vehicleController } = useVehicleController(
     chassisBodyRef,
@@ -108,11 +129,11 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       ground.current = raycastResult.collider;
     }
 
-    // engine: FWD (wheels 0, 1)
+    // engine: FWD (wheels 2, 3 = front)
     const throttle = Number(keys.forward) - Number(keys.backward);
     const engineForce = throttle * forces.accelerate;
-    controller.setWheelEngineForce(0, engineForce);
-    controller.setWheelEngineForce(1, engineForce);
+    controller.setWheelEngineForce(2, engineForce);
+    controller.setWheelEngineForce(3, engineForce);
 
     // brakes: handbrake + rolling resistance + air drag
     const speed = Math.abs(controller.currentVehicleSpeed());
@@ -126,16 +147,16 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelBrake(2, totalBrake);
     controller.setWheelBrake(3, totalBrake);
 
-    // steering: front wheels with smoothing
-    const currentSteering = controller.wheelSteering(0) || 0;
+    // steering: front wheels (2, 3) with smoothing
+    const currentSteering = controller.wheelSteering(2) || 0;
     const steerDirection = Number(keys.left) - Number(keys.right);
     const steering = MathUtils.lerp(
       currentSteering,
       forces.steerAngle * steerDirection,
       0.5,
     );
-    controller.setWheelSteering(0, steering);
-    controller.setWheelSteering(1, steering);
+    controller.setWheelSteering(2, steering);
+    controller.setWheelSteering(3, steering);
 
     // air control
     if (!ground.current) {
@@ -214,39 +235,54 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     >
       <CuboidCollider args={chassis.halfExtents} />
 
-      {/* chassis */}
-      <mesh ref={chassisMeshRef}>
-        <boxGeometry
-          args={[
-            chassis.halfExtents[0] * 2,
-            chassis.halfExtents[1] * 2,
-            chassis.halfExtents[2] * 2,
-          ]}
+      {config.model ? (
+        <VehicleModel
+          ref={chassisMeshRef}
+          url={config.model}
+          wheelsRef={wheelsRef as React.RefObject<(Object3D | null)[]>}
+          onWheelPositions={handleWheelPositions}
         />
-        <meshStandardMaterial color={config.color} />
-      </mesh>
+      ) : (
+        <>
+          {/* chassis */}
+          <mesh ref={chassisMeshRef}>
+            <boxGeometry
+              args={[
+                chassis.halfExtents[0] * 2,
+                chassis.halfExtents[1] * 2,
+                chassis.halfExtents[2] * 2,
+              ]}
+            />
+            <meshStandardMaterial color={config.color} />
+          </mesh>
 
-      {/* wheels */}
-      {wheels.map((wheel, index) => (
-        <group
-          key={index}
-          ref={(ref) => {
-            wheelsRef.current[index] = ref;
-          }}
-          position={wheel.position}
-        >
-          <group rotation-x={-Math.PI / 2}>
-            <mesh>
-              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 16]} />
-              <meshStandardMaterial color="#222" />
-            </mesh>
-            <mesh scale={1.01}>
-              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 6]} />
-              <meshStandardMaterial color="#fff" wireframe />
-            </mesh>
-          </group>
-        </group>
-      ))}
+          {/* wheels */}
+          {wheels.map((wheel, index) => (
+            <group
+              key={index}
+              ref={(ref) => {
+                wheelsRef.current[index] = ref;
+              }}
+              position={wheel.position}
+            >
+              <group rotation-x={-Math.PI / 2}>
+                <mesh>
+                  <cylinderGeometry
+                    args={[wheel.radius, wheel.radius, 0.25, 16]}
+                  />
+                  <meshStandardMaterial color="#222" />
+                </mesh>
+                <mesh scale={1.01}>
+                  <cylinderGeometry
+                    args={[wheel.radius, wheel.radius, 0.25, 6]}
+                  />
+                  <meshStandardMaterial color="#fff" wireframe />
+                </mesh>
+              </group>
+            </group>
+          ))}
+        </>
+      )}
     </RigidBody>
   );
 });
