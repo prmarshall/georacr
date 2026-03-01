@@ -175,7 +175,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const steering = MathUtils.lerp(
       currentSteering,
       forces.steerAngle * steerDirection,
-      0.5,
+      0.75,
     );
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);

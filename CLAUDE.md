@@ -52,9 +52,23 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
 - **Speedometer:** `VehicleHandle.speed` (getter backed by `speedRef`) is updated each frame with chassis `linvel()` magnitude. `Speedometer` component in `App.tsx` reads it via `requestAnimationFrame` loop (no React re-renders) and displays km/h.
 - **Config:** Each vehicle is a self-describing JSON file with `name`, `color`, and physics data using `[number, number, number]` tuples (no Vector3). Angles stored as degrees (`steerAngleDeg`), converted to radians by `loadVehicleEntry()`. To add a new vehicle: just drop a `.json` file in `src/vehicles/` — no code changes needed.
+- **Chassis density:** Optional `chassis.density` (default 1). Rapier computes mass from collider volume \* density. When increasing density, scale forces, suspension stiffness, side friction stiffness, rolling resistance, and air drag proportionally to maintain the same driving feel.
+- **Suspension damping:** Optional `suspensionDamping` on wheel defaults/placements. Applied to both Rapier's `setWheelSuspensionCompression` and `setWheelSuspensionRelaxation`. Prevents resonance tipping from rapid input changes. Scale proportionally with suspension stiffness.
 - **Registry:** `vehicles.ts` auto-discovers all `src/vehicles/*.json` files via `import.meta.glob`. Exports `VEHICLES: VehicleEntry[]`.
 - **Validation:** `parseVehicleJSON(raw: unknown)` validates required fields at runtime, replacing unsafe type casts and catching malformed configs early.
 - **Selector:** Chevron UI in `App.tsx` cycles through `VEHICLES`. Changing index remounts `Vehicle` via React `key`.
+- **Steering response:** Lerp factor 0.75 in Vehicle.tsx. Higher = snappier turn-in, lower = more gradual.
+
+### Vehicle Tuning Guide
+
+When adjusting vehicle configs, keep these relationships in mind:
+
+- **Density scaling:** When increasing `chassis.density` by N, also scale by N: `accelerate`, `brake`, `suspensionStiffness`, `sideFrictionStiffness`, `rollingResistance`, `airDragCoefficient`, `suspensionDamping`.
+- **Handling (understeer/oversteer):** Controlled by `sideFrictionStiffness` (lateral grip) and `frictionSlip` (grip before sliding). Higher values = more planted. Sedan: 4/1.3, Sports: 5/1.4, Tractor: 40/2.0.
+- **Mixed wheel sizes:** When rear and front wheels have different radii, offset the smaller wheels' Y connection point by the radius difference to keep the chassis level. E.g. tractor rear 0.65, front 0.4 → front Y lowered by 0.25.
+- **Acceleration feel:** Rapier mass = collider volume \* density. F=ma gives theoretical 0-speed time. Sports car (mass ~7.5, force 60) → ~8 m/s² → 0-50 km/h in ~1.7s theoretical, ~2-3s with drag. Acceptable for sporty car, a true supercar would need more force.
+- **Wheel visual width:** `radius * 0.7` — proportional to wheel size.
+- **Wheel X placement:** Must be >= chassis halfExtent X to avoid clipping into the body.
 
 ### Coordinate Convention: -Z Forward (Three.js Default)
 

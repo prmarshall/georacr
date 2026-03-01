@@ -18,8 +18,8 @@
       "suspensionStiffness": 30,
       "suspensionDamping": 2.5,
       "maxSuspensionTravel": 0.3,
-      "sideFrictionStiffness": 3,
-      "frictionSlip": 1.0,
+      "sideFrictionStiffness": 4,
+      "frictionSlip": 1.3,
       "radius": 0.32
     },
     "placements": [
