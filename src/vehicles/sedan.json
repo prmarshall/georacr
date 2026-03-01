@@ -5,11 +5,11 @@
     "halfExtents": [0.9, 0.55, 2.3]
   },
   "forces": {
-    "accelerate": 30,
+    "accelerate": 50,
     "brake": 0.5,
     "steerAngleDeg": 35,
     "rollingResistance": 0.01,
-    "airDragCoefficient": 0.024
+    "airDragCoefficient": 0.04
   },
   "wheels": {
     "defaults": {

@@ -47,7 +47,8 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Controller:** Rapier's built-in `DynamicRayCastVehicleController` via `world.createVehicleController(chassis)`. Do NOT use manual raycast suspension or Hooke's Law.
 - **Drive type:** Configurable per vehicle via `driveType` field (`"FWD"`, `"RWD"`, `"AWD"`, default `"FWD"`). Sedan = FWD, Sports = RWD, Tractor = RWD. Engine force applied to appropriate wheels (0,1 = rear, 2,3 = front).
 - **Deceleration:** Rolling resistance (constant force when no throttle) + air drag (force proportional to speed²). Both applied via `chassisRigidBody.addForce()` — NOT `setWheelBrake`, which clamps internally and causes artificial speed caps.
-- **Controls:** WASD + Space (brake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
+- **Handbrake (Space):** Realistic rear-wheel-only brake. Locks rear wheels — at low speed wheels hold firm (full friction), at 30+ km/h rear loses grip for drift/spin (friction drops to 10%). On RWD/AWD, rear engine force is killed when handbrake active (brake and engine fight over same wheels). On FWD, front wheels still drive. Uses both `setWheelFrictionSlip` and `setWheelSideFrictionStiffness` dynamically.
+- **Controls:** WASD + Space (handbrake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
 - **Speedometer:** `VehicleHandle.speed` (getter backed by `speedRef`) is updated each frame with chassis `linvel()` magnitude. `Speedometer` component in `App.tsx` reads it via `requestAnimationFrame` loop (no React re-renders) and displays km/h + mph. Exponential smoothing (factor 0.15) prevents flicker.

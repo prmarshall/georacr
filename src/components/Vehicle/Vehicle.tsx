@@ -154,15 +154,19 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     // engine force — drive type determines which wheels receive power
     const throttle = Number(keys.forward) - Number(keys.backward);
     const steerInput = Math.abs(Number(keys.left) - Number(keys.right));
-    // FWD: reduce throttle when steering (front tires share grip between drive + turn)
-    const steerThrottleReduction =
-      driveType === "FWD" ? 1.0 - steerInput * 0.4 : 1.0;
     // Speed for torque/gear calculations
     const linvel = chassisRigidBody.linvel();
     const speed = Math.sqrt(
       linvel.x * linvel.x + linvel.y * linvel.y + linvel.z * linvel.z,
     );
     const speedKmhForGear = speed * 3.6;
+    // FWD: reduce throttle when steering (front tires share grip between drive + turn)
+    // Ramps from no penalty at standstill to full 40% at 30+ km/h (grip budget matters at speed)
+    const steerPenalty =
+      driveType === "FWD"
+        ? steerInput * 0.4 * MathUtils.clamp(speedKmhForGear / 30, 0, 1)
+        : 0;
+    const steerThrottleReduction = 1.0 - steerPenalty;
     // Clutch engagement: ramp from 0.3 at standstill to 1.0 at ~15 km/h
     const clutchFactor = MathUtils.lerp(
       0.3,
@@ -226,15 +230,49 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       1.0,
       MathUtils.clamp(speedKmh / 20, 0, 1),
     );
-    const currentSteering = controller.wheelSteering(2) || 0;
     const steerDirection = Number(keys.left) - Number(keys.right);
-    const steering = MathUtils.lerp(
-      currentSteering,
-      forces.steerAngle * lowSpeedSteerBoost * steerDirection,
-      0.75,
-    );
+    const targetSteering =
+      forces.steerAngle * lowSpeedSteerBoost * steerDirection;
+    // Lerp toward target when steering, snap to zero when released
+    const currentSteering = controller.wheelSteering(2) || 0;
+    const steering =
+      steerDirection === 0
+        ? 0
+        : MathUtils.lerp(currentSteering, targetSteering, 0.75);
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
+
+    // Steering drift + self-centering (simulates road imperfections + caster)
+    // Tiny random yaw perturbation prevents perfectly straight driving,
+    // equalizing straight-line and post-turn top speed scenarios.
+    // Use horizontal speed to avoid noisy atan2 from vertical suspension bounce.
+    const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
+    const hSpeedKmh = hSpeed * 3.6;
+    if (ground.current && hSpeedKmh > 15) {
+      const angvel = chassisRigidBody.angvel();
+      const drift = (Math.random() - 0.5) * 0.006 * (hSpeedKmh / 100);
+
+      // Self-centering: align heading with velocity when not steering
+      let correction = 0;
+      if (steerDirection === 0) {
+        const chassisRot = chassisRigidBody.rotation();
+        const fx =
+          2 * (chassisRot.x * chassisRot.z + chassisRot.w * chassisRot.y);
+        const fz =
+          1 - 2 * (chassisRot.x * chassisRot.x + chassisRot.y * chassisRot.y);
+        const headingYaw = Math.atan2(-fx, -fz);
+        const velocityYaw = Math.atan2(linvel.x, linvel.z);
+        let yawError = headingYaw - velocityYaw;
+        yawError = ((yawError + Math.PI) % (2 * Math.PI)) - Math.PI;
+        if (yawError < -Math.PI) yawError += 2 * Math.PI;
+        correction = yawError * 2.0;
+      }
+
+      chassisRigidBody.setAngvel(
+        new rapier.Vector3(angvel.x, angvel.y + drift + correction, angvel.z),
+        true,
+      );
+    }
 
     // Dynamic wheel friction
     const reverseSteering = isReversing && steerInput > 0;
@@ -245,7 +283,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       const isRear = i < 2;
       let sideFriction = baseSideFriction;
       let frictionSlip = baseFrictionSlip;
-      // Reduce front grip when reversing + steering (prevents pivot-spin)
+      // Reduce front lateral grip when reversing + steering (prevents pivot-spin)
       if (isFront && reverseSteering) sideFriction *= 0.2;
       // Handbrake: at speed, locked rear wheels lose grip and slide.
       // At low speed, wheels lock in place (full friction retained).
@@ -364,6 +402,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       ref={chassisBodyRef}
       colliders={false}
       type="dynamic"
+      angularDamping={0.5}
     >
       <CuboidCollider
         args={chassis.halfExtents}

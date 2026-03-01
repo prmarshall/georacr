@@ -7,11 +7,11 @@
     "density": 3
   },
   "forces": {
-    "accelerate": 80,
+    "accelerate": 100,
     "brake": 3.0,
     "steerAngleDeg": 30,
     "rollingResistance": 0.024,
-    "airDragCoefficient": 0.052
+    "airDragCoefficient": 0.025
   },
   "gears": [40, 80, 140, 200],
   "wheels": {
