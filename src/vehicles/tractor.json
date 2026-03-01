@@ -1,0 +1,35 @@
+{
+  "name": "Tractor",
+  "color": "#4a8c2a",
+  "chassis": {
+    "halfExtents": [0.5, 0.3, 0.7]
+  },
+  "forces": {
+    "accelerate": 1,
+    "brake": 0.05,
+    "steerAngleDeg": 12,
+    "rollingResistance": 0.005,
+    "airDragCoefficient": 0.001
+  },
+  "wheels": {
+    "defaults": {
+      "axleCs": [1, 0, 0],
+      "suspensionRestLength": 0.15,
+      "suspensionStiffness": 20,
+      "maxSuspensionTravel": 1,
+      "sideFrictionStiffness": 3,
+      "frictionSlip": 1.5,
+      "radius": 0.2
+    },
+    "placements": [
+      { "position": [-0.5, -0.15, 0.55] },
+      { "position": [0.5, -0.15, 0.55] },
+      { "position": [-0.45, -0.15, -0.55] },
+      { "position": [0.45, -0.15, -0.55] }
+    ]
+  },
+  "spawn": {
+    "position": [0, 2, 0],
+    "rotation": [0, 0, 0]
+  }
+}

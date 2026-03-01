@@ -31,21 +31,6 @@ export const VehicleModel = forwardRef<Object3D, VehicleModelProps>(
         positions.push(pos);
         i++;
       }
-      // TODO: remove debug logging
-      console.log(
-        "Scene root rotation:",
-        scene.rotation.x.toFixed(3),
-        scene.rotation.y.toFixed(3),
-        scene.rotation.z.toFixed(3),
-      );
-      console.log(
-        "Scene root quaternion:",
-        scene.quaternion.x.toFixed(3),
-        scene.quaternion.y.toFixed(3),
-        scene.quaternion.z.toFixed(3),
-        scene.quaternion.w.toFixed(3),
-      );
-
       onWheelPositions(positions);
     }, [nodes, scene, wheelsRef, onWheelPositions]);
 

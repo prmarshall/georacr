@@ -48,7 +48,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   const [, getKeys] = useKeyboardControls();
 
   // Mouse orbit state
-  const orbitAzimuth = useRef(Math.PI / 2); // behind car (+X direction, car faces -X)
+  const orbitAzimuth = useRef(0); // behind car (+Z direction, car faces -Z)
   const orbitElevation = useRef(0.35);
 
   useEffect(() => {
@@ -164,22 +164,6 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelEngineForce(2, engineForce);
     controller.setWheelEngineForce(3, engineForce);
 
-    // TODO: remove debug logging
-    if (throttle !== 0 && Math.random() < 0.02) {
-      const vel = chassisRigidBody.linvel();
-      const pos = chassisRigidBody.translation();
-      const grounded = [];
-      for (let wi = 0; wi < wheels.length; wi++) {
-        grounded.push(controller.wheelGroundObject(wi) != null);
-      }
-      console.log(
-        `throttle=${throttle} force=${engineForce} speed=${controller.currentVehicleSpeed().toFixed(3)}`,
-        `pos(${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)})`,
-        `vel(${vel.x.toFixed(2)},${vel.y.toFixed(2)},${vel.z.toFixed(2)})`,
-        `grounded=[${grounded.join(",")}]`,
-      );
-    }
-
     // brakes: handbrake + rolling resistance + air drag
     const speed = Math.abs(controller.currentVehicleSpeed());
     const handBrake = Number(keys.brake) * forces.brake;
@@ -209,9 +193,9 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       const sideAngVel = Number(keys.left) - Number(keys.right);
 
       const angvel = _airControlAngVel.set(
-        0,
-        sideAngVel * t,
         forwardAngVel * t,
+        sideAngVel * t,
+        0,
       );
       angvel.applyQuaternion(
         chassisRigidBody.rotation() as unknown as Quaternion,
@@ -305,7 +289,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
               }}
               position={wheel.position}
             >
-              <group rotation-x={-Math.PI / 2}>
+              <group rotation-z={-Math.PI / 2}>
                 <mesh>
                   <cylinderGeometry
                     args={[wheel.radius, wheel.radius, 0.25, 16]}

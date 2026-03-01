@@ -2,7 +2,7 @@
   "name": "default",
   "color": "#e04040",
   "chassis": {
-    "halfExtents": [0.8, 0.2, 0.4]
+    "halfExtents": [0.4, 0.2, 0.8]
   },
   "forces": {
     "accelerate": 3,
@@ -13,7 +13,7 @@
   },
   "wheels": {
     "defaults": {
-      "axleCs": [0, 0, -1],
+      "axleCs": [1, 0, 0],
       "suspensionRestLength": 0.125,
       "suspensionStiffness": 24,
       "maxSuspensionTravel": 1,
@@ -22,10 +22,10 @@
       "radius": 0.15
     },
     "placements": [
-      { "position": [0.65, -0.15, -0.45] },
-      { "position": [0.65, -0.15, 0.45] },
-      { "position": [-0.65, -0.15, -0.45] },
-      { "position": [-0.65, -0.15, 0.45] }
+      { "position": [-0.45, -0.15, 0.65] },
+      { "position": [0.45, -0.15, 0.65] },
+      { "position": [-0.45, -0.15, -0.65] },
+      { "position": [0.45, -0.15, -0.65] }
     ]
   },
   "spawn": {

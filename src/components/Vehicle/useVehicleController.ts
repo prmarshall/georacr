@@ -12,6 +12,8 @@ const up = new Vector3(0, 1, 0);
 
 const _wheelSteeringQuat = new Quaternion();
 const _wheelRotationQuat = new Quaternion();
+const _forward = new Vector3();
+const _linvel = new Vector3();
 
 export function useVehicleController(
   chassisRef: RefObject<RapierRigidBody | null>,
@@ -22,6 +24,7 @@ export function useVehicleController(
   const vehicleController = useRef<DynamicRayCastVehicleController | null>(
     null,
   );
+  const wheelRotations = useRef<number[]>([]);
 
   useEffect(() => {
     const chassis = chassisRef.current;
@@ -46,15 +49,8 @@ export function useVehicleController(
       vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);
     }
 
-    // TODO: remove debug logging
-    console.log("Vehicle controller created —", wheelsInfo.length, "wheels:");
-    for (const [i, w] of wheelsInfo.entries()) {
-      console.log(
-        `  wheel ${i}: pos(${w.position.x.toFixed(3)}, ${w.position.y.toFixed(3)}, ${w.position.z.toFixed(3)}) r=${w.radius} suspRest=${w.suspensionRestLength}`,
-      );
-    }
-
     vehicleController.current = vehicle;
+    wheelRotations.current = new Array(wheelsInfo.length).fill(0);
 
     return () => {
       vehicleController.current = null;
@@ -72,6 +68,17 @@ export function useVehicleController(
     const wheels = wheelsRef.current;
     if (!wheels) return;
 
+    // Compute forward speed from chassis velocity directly.
+    // Rapier's currentVehicleSpeed() oscillates sign during straight driving,
+    // which prevents its internal wheelRotation() from accumulating.
+    const chassisBody = controller.chassis();
+    const linvel = chassisBody.linvel();
+    const rot = chassisBody.rotation();
+    _forward.set(0, 0, -1).applyQuaternion(rot as unknown as Quaternion);
+    const forwardSpeed = _linvel
+      .set(linvel.x, linvel.y, linvel.z)
+      .dot(_forward);
+
     for (const [index, wheel] of wheels.entries()) {
       if (!wheel) continue;
 
@@ -80,14 +87,19 @@ export function useVehicleController(
         controller.wheelChassisConnectionPointCs(index)?.y || 0;
       const suspension = controller.wheelSuspensionLength(index) || 0;
       const steering = controller.wheelSteering(index) || 0;
-      const rotationRad = controller.wheelRotation(index) || 0;
 
       wheel.position.y = connection - suspension;
+
+      // Accumulate wheel spin from forward speed.
+      // Positive speed (moving in -Z forward direction) produces positive
+      // rotation around the X axle, which visually spins the wheel forward.
+      const radius = wheelsInfo[index]?.radius || 0.15;
+      wheelRotations.current[index] -= (forwardSpeed * world.timestep) / radius;
 
       _wheelSteeringQuat.setFromAxisAngle(up, steering);
       _wheelRotationQuat.setFromAxisAngle(
         wheelAxleCs as unknown as Vector3,
-        rotationRad,
+        wheelRotations.current[index],
       );
 
       wheel.quaternion.multiplyQuaternions(
