@@ -26,7 +26,7 @@ src/
 │   └── Vehicle/
 │       ├── Vehicle.tsx                  # Main component: controls, camera, reset
 │       ├── useVehicleController.ts      # Hook wrapping Rapier's DynamicRayCastVehicleController
-│       └── vehicleConfig.ts            # Tunable constants (forces, suspension, wheel layout)
+│       └── vehicleConfig.ts            # JSON-serializable VehicleConfig type, defaults, createWheels() factory
 ```
 
 ## Vehicle System
@@ -40,7 +40,7 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Controls:** WASD + Space (brake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
-- **Config:** All tunable values in `vehicleConfig.ts` — wheel positions, suspension, forces, drag coefficients.
+- **Config:** `VehicleConfig` type in `vehicleConfig.ts` is JSON-serializable (uses `[number, number, number]` tuples, no Vector3). `DEFAULT_VEHICLE_CONFIG` provides defaults. `createWheels(config)` factory converts tuples to runtime `WheelInfo[]`. `Vehicle` accepts an optional `config` prop for variants.
 
 ## Camera
 
@@ -53,5 +53,5 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 
 - Use functional components with TypeScript.
 - For 3D math, use Three.js classes (`Vector3`, `Quaternion`, `Euler`).
-- All vehicle physics tunables go in `vehicleConfig.ts`, not hardcoded in components.
+- All vehicle physics tunables go in `vehicleConfig.ts` as JSON-serializable data, not hardcoded in components.
 - `useAfterPhysicsStep` for wheel visual sync; `useFrame` for controls and camera.
