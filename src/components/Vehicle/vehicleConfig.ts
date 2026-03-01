@@ -35,6 +35,9 @@ export interface VehicleConfig {
     rollingResistance: number;
     airDragCoefficient: number;
   };
+  /** Shift speeds in km/h. Length = number of gears - 1 (top gear has no shift point).
+   *  e.g. [40, 80, 140, 200] = 5 gears. If omitted, flat torque (no gear simulation). */
+  gears?: number[];
   wheels: {
     defaults: WheelDefaults;
     placements: WheelPlacement[];
@@ -69,6 +72,7 @@ export interface VehicleConfigJSON {
   forces: Omit<VehicleConfig["forces"], "steerAngle"> & {
     steerAngleDeg: number;
   };
+  gears?: number[];
   wheels: VehicleConfig["wheels"];
   spawn: VehicleConfig["spawn"];
 }
@@ -101,19 +105,46 @@ export interface VehicleEntry {
 }
 
 export function loadVehicleEntry(json: VehicleConfigJSON): VehicleEntry {
-  const { name, driveType, forces, ...rest } = json;
+  const { name, driveType, gears, forces, ...rest } = json;
   const { steerAngleDeg, ...restForces } = forces;
   return {
     name,
     config: {
       ...rest,
       driveType: driveType ?? "FWD",
+      gears,
       forces: {
         ...restForces,
         steerAngle: MathUtils.degToRad(steerAngleDeg),
       },
     },
   };
+}
+
+/**
+ * Returns the current gear index and torque multiplier for a given speed.
+ * Gear ratios use a power curve: 1st gear gets maxMultiplier, top gear gets 1.0.
+ * @param gears - Shift speeds in km/h (length = numGears - 1)
+ * @param speedKmh - Current speed in km/h
+ * @param maxMultiplier - Force multiplier in 1st gear (default 3.0)
+ */
+export function getGearTorque(
+  gears: number[],
+  speedKmh: number,
+  maxMultiplier = 2.0,
+): { gear: number; multiplier: number } {
+  const numGears = gears.length + 1;
+  let gear = numGears - 1; // top gear by default
+  for (let i = 0; i < gears.length; i++) {
+    if (speedKmh < gears[i]) {
+      gear = i;
+      break;
+    }
+  }
+  // Power curve: multiplier = maxMultiplier ^ ((numGears-1-gear) / (numGears-1))
+  const t = (numGears - 1 - gear) / (numGears - 1);
+  const multiplier = maxMultiplier ** t;
+  return { gear, multiplier };
 }
 
 // --- Factory function ---

@@ -45,7 +45,7 @@ src/
 Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/main/sketches/rapier/dynamic-raycast-vehicle-controller).
 
 - **Controller:** Rapier's built-in `DynamicRayCastVehicleController` via `world.createVehicleController(chassis)`. Do NOT use manual raycast suspension or Hooke's Law.
-- **Drive:** FWD — engine force on wheels 2, 3 (front). Wheels 0, 1 are rear.
+- **Drive type:** Configurable per vehicle via `driveType` field (`"FWD"`, `"RWD"`, `"AWD"`, default `"FWD"`). Sedan = FWD, Sports = RWD, Tractor = RWD. Engine force applied to appropriate wheels (0,1 = rear, 2,3 = front).
 - **Deceleration:** Rolling resistance (constant brake when no throttle) + air drag (brake proportional to speed²).
 - **Controls:** WASD + Space (brake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
@@ -58,15 +58,18 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Validation:** `parseVehicleJSON(raw: unknown)` validates required fields at runtime, replacing unsafe type casts and catching malformed configs early.
 - **Selector:** Chevron UI in `App.tsx` cycles through `VEHICLES`. Changing index remounts `Vehicle` via React `key`.
 - **Steering response:** Lerp factor 0.75 in Vehicle.tsx. Higher = snappier turn-in, lower = more gradual.
+- **Low-speed steer boost:** Steering angle scales from 1.5x at standstill to 1.0x at 20+ km/h for tighter parking turns.
+- **FWD throttle reduction:** Engine force reduced 40% when steering on FWD vehicles (front tires share grip between drive + turn). Does not apply to RWD/AWD.
+- **Reverse side friction:** Front wheel `sideFrictionStiffness` dynamically reduced to 20% when reversing + steering, preventing front wheels from anchoring and causing pivot-spin. Resets to normal immediately when going forward.
 
 ### Vehicle Tuning Guide
 
 When adjusting vehicle configs, keep these relationships in mind:
 
 - **Density scaling:** When increasing `chassis.density` by N, also scale by N: `accelerate`, `brake`, `suspensionStiffness`, `sideFrictionStiffness`, `rollingResistance`, `airDragCoefficient`, `suspensionDamping`.
-- **Handling (understeer/oversteer):** Controlled by `sideFrictionStiffness` (lateral grip) and `frictionSlip` (grip before sliding). Higher values = more planted. Sedan: 4/1.3, Sports: 5/1.4, Tractor: 40/2.0.
+- **Handling (understeer/oversteer):** Controlled by `sideFrictionStiffness` (lateral grip) and `frictionSlip` (grip before sliding). Higher values = more planted. Sedan: 4/1.3, Sports: 15/1.4 (density 3), Tractor: 40/2.0 (density 10).
 - **Mixed wheel sizes:** When rear and front wheels have different radii, offset the smaller wheels' Y connection point by the radius difference to keep the chassis level. E.g. tractor rear 0.65, front 0.4 → front Y lowered by 0.25.
-- **Acceleration feel:** Rapier mass = collider volume \* density. F=ma gives theoretical 0-speed time. Sports car (mass ~7.5, force 60) → ~8 m/s² → 0-50 km/h in ~1.7s theoretical, ~2-3s with drag. Acceptable for sporty car, a true supercar would need more force.
+- **Acceleration feel:** Rapier mass = collider volume \* density. F=ma gives theoretical 0-speed time. Sports car (mass ~22.5, force 180) → ~8 m/s² → 0-50 km/h in ~1.7s theoretical, ~2-3s with drag. Acceptable for sporty car, a true supercar would need more force.
 - **Wheel visual width:** `radius * 0.7` — proportional to wheel size.
 - **Wheel X placement:** Must be >= chassis halfExtent X to avoid clipping into the body.
 
@@ -91,9 +94,12 @@ When adjusting vehicle configs, keep these relationships in mind:
 ## Camera
 
 - Inline in `Vehicle.tsx` (not a separate component).
-- **Mouse orbit:** Click to capture pointer lock, Escape to release. Mouse controls azimuth/elevation around the vehicle. Elevation is inverted (mouse down = camera higher).
-- **Default position:** Behind car at +Z, looking toward -Z (azimuth=0).
-- **Smoothing:** Uses `1.0 - 0.01 ** delta` for frame-rate-independent lerp.
+- **Chase cam (GTA5-style):** Camera follows vehicle heading via smoothed yaw. During sharp turns (high yaw rate), camera follow speed decreases so you see the side/front of the car. When turn rate drops, camera swings back behind.
+- **Mouse orbit override:** Click to capture pointer lock, Escape to release. Mouse input adds azimuth/elevation offset on top of chase cam. After 1 second of mouse idle, offsets decay back to 0 and chase cam takes over.
+- **Elevation:** Base 0.35 rad, mouse adjustable. Inverted (mouse down = camera higher).
+- **Default position:** Behind car at +Z, looking toward -Z.
+- **Position smoothing:** Uses `1.0 - 0.01 ** delta` for frame-rate-independent lerp.
+- **Yaw smoothing:** Uses `1.0 - 0.02 ** delta` (slower than position) with `sharpTurnFactor` that scales from 1.0 (straight) to 0.05 (sharp turn at yaw rate >= 3 rad/s).
 
 ## Guidelines
 

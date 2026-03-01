@@ -12,7 +12,11 @@ import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Object3D, Quaternion, Vector3 } from "three";
-import { createWheels, type VehicleConfig } from "./vehicleConfig";
+import {
+  createWheels,
+  getGearTorque,
+  type VehicleConfig,
+} from "./vehicleConfig";
 import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
 
@@ -90,7 +94,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
   const ground = useRef<Collider | null>(null);
 
-  const { forces, spawn, chassis, driveType } = config;
+  const { forces, spawn, chassis, driveType, gears } = config;
 
   const doReset = () => {
     const controller = vehicleController.current;
@@ -153,7 +157,28 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     // FWD: reduce throttle when steering (front tires share grip between drive + turn)
     const steerThrottleReduction =
       driveType === "FWD" ? 1.0 - steerInput * 0.4 : 1.0;
-    const engineForce = throttle * forces.accelerate * steerThrottleReduction;
+    // Speed for torque/gear calculations
+    const linvel = chassisRigidBody.linvel();
+    const speed = Math.sqrt(
+      linvel.x * linvel.x + linvel.y * linvel.y + linvel.z * linvel.z,
+    );
+    const speedKmhForGear = speed * 3.6;
+    // Clutch engagement: ramp from 0.3 at standstill to 1.0 at ~15 km/h
+    const clutchFactor = MathUtils.lerp(
+      0.3,
+      1.0,
+      MathUtils.clamp(speedKmhForGear / 15, 0, 1),
+    );
+    // Gear torque multiplier (1st gear = highest, top gear = 1.0)
+    const gearMultiplier = gears
+      ? getGearTorque(gears, speedKmhForGear).multiplier
+      : 1.0;
+    const engineForce =
+      throttle *
+      forces.accelerate *
+      steerThrottleReduction *
+      clutchFactor *
+      gearMultiplier;
     const driveRear = driveType === "RWD" || driveType === "AWD";
     const driveFront = driveType === "FWD" || driveType === "AWD";
     controller.setWheelEngineForce(0, driveRear ? engineForce : 0);
@@ -162,10 +187,6 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
 
     // brakes: handbrake + rolling resistance + air drag
-    const linvel = chassisRigidBody.linvel();
-    const speed = Math.sqrt(
-      linvel.x * linvel.x + linvel.y * linvel.y + linvel.z * linvel.z,
-    );
     speedRef.current = speed;
     const handBrake = Number(keys.brake) * forces.brake;
     const rollingResistance =
