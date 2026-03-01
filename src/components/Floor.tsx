@@ -73,23 +73,57 @@ function RoadMarkers() {
 
 const ROAD_WIDTH = 8;
 const ROAD_LENGTH = 1000;
+const FLOOR_SIZE = 2200;
+const FINISH_WIDTH = 12;
+const FINISH_LENGTH = 4;
+
+function useFinishTexture() {
+  return useMemo(() => {
+    const size = 64;
+    const squares = 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const sq = size / squares;
+    for (let row = 0; row < squares; row++) {
+      for (let col = 0; col < squares; col++) {
+        ctx.fillStyle = (row + col) % 2 === 0 ? "#ffffff" : "#111111";
+        ctx.fillRect(col * sq, row * sq, sq, sq);
+      }
+    }
+    const tex = new CanvasTexture(canvas);
+    tex.magFilter = NearestFilter;
+    return tex;
+  }, []);
+}
 
 export function Floor() {
   const checkerMap = useCheckerTexture();
   const roadMap = useRoadTexture();
+  const finishMap = useFinishTexture();
 
   return (
     <RigidBody type="fixed" friction={1.5}>
-      <CuboidCollider args={[500, 0.1, 500]} friction={1.5} />
+      <CuboidCollider
+        args={[FLOOR_SIZE / 2, 0.1, FLOOR_SIZE / 2]}
+        position={[0, 0, -FLOOR_SIZE / 2 + 100]}
+        friction={1.5}
+      />
       {/* Ground */}
-      <mesh receiveShadow position={[0, -0.1, 0]}>
-        <boxGeometry args={[1000, 0.2, 1000]} />
+      <mesh receiveShadow position={[0, -0.1, -FLOOR_SIZE / 2 + 100]}>
+        <boxGeometry args={[FLOOR_SIZE, 0.2, FLOOR_SIZE]} />
         <meshStandardMaterial map={checkerMap} />
       </mesh>
       {/* 1km road — starts at spawn, runs in -Z direction */}
       <mesh position={[0, 0.01, -ROAD_LENGTH / 2]} rotation-x={-Math.PI / 2}>
         <planeGeometry args={[ROAD_WIDTH, ROAD_LENGTH]} />
         <meshStandardMaterial map={roadMap} />
+      </mesh>
+      {/* Finish line at 1km */}
+      <mesh position={[0, 0.02, -ROAD_LENGTH]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[FINISH_WIDTH, FINISH_LENGTH]} />
+        <meshStandardMaterial map={finishMap} />
       </mesh>
       <RoadMarkers />
     </RigidBody>

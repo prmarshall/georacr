@@ -1,31 +1,31 @@
 {
-  "name": "default",
-  "color": "#e04040",
+  "name": "Sedan",
+  "color": "#7088a0",
   "chassis": {
-    "halfExtents": [0.4, 0.2, 0.8]
+    "halfExtents": [0.9, 0.55, 2.3]
   },
   "forces": {
-    "accelerate": 3,
-    "brake": 0.05,
-    "steerAngleDeg": 7.5,
-    "rollingResistance": 0.003,
-    "airDragCoefficient": 0.0005
+    "accelerate": 30,
+    "brake": 0.5,
+    "steerAngleDeg": 35,
+    "rollingResistance": 0.01,
+    "airDragCoefficient": 0.006
   },
   "wheels": {
     "defaults": {
       "axleCs": [1, 0, 0],
-      "suspensionRestLength": 0.125,
-      "suspensionStiffness": 24,
-      "maxSuspensionTravel": 1,
+      "suspensionRestLength": 0.25,
+      "suspensionStiffness": 30,
+      "maxSuspensionTravel": 0.3,
       "sideFrictionStiffness": 3,
-      "frictionSlip": 1.5,
-      "radius": 0.15
+      "frictionSlip": 1.0,
+      "radius": 0.32
     },
     "placements": [
-      { "position": [-0.45, -0.15, 0.65] },
-      { "position": [0.45, -0.15, 0.65] },
-      { "position": [-0.45, -0.15, -0.65] },
-      { "position": [0.45, -0.15, -0.65] }
+      { "position": [-0.9, -0.4, 1.35] },
+      { "position": [0.9, -0.4, 1.35] },
+      { "position": [-0.9, -0.4, -1.35] },
+      { "position": [0.9, -0.4, -1.35] }
     ]
   },
   "spawn": {

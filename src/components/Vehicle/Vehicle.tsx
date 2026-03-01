@@ -27,7 +27,7 @@ interface VehicleProps {
 }
 
 const cameraTargetOffset = new Vector3(0, 1.5, 0);
-const ORBIT_DISTANCE = 8;
+const ORBIT_DISTANCE = 12;
 const MOUSE_SENSITIVITY = 0.003;
 
 const _bodyPosition = new Vector3();
@@ -275,11 +275,15 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
         >
           <group rotation-z={-Math.PI / 2}>
             <mesh>
-              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 16]} />
+              <cylinderGeometry
+                args={[wheel.radius, wheel.radius, wheel.radius * 0.7, 16]}
+              />
               <meshStandardMaterial color="#222" />
             </mesh>
             <mesh scale={1.01}>
-              <cylinderGeometry args={[wheel.radius, wheel.radius, 0.25, 6]} />
+              <cylinderGeometry
+                args={[wheel.radius, wheel.radius, wheel.radius * 0.7, 6]}
+              />
               <meshStandardMaterial color="#fff" wireframe />
             </mesh>
           </group>

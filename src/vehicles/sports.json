@@ -1,31 +1,31 @@
 {
-  "name": "sports",
-  "color": "#2060e0",
+  "name": "Sports",
+  "color": "#cc2020",
   "chassis": {
-    "halfExtents": [0.42, 0.15, 0.9]
+    "halfExtents": [0.95, 0.45, 2.2]
   },
   "forces": {
-    "accelerate": 6,
-    "brake": 0.08,
-    "steerAngleDeg": 10,
-    "rollingResistance": 0.002,
-    "airDragCoefficient": 0.0003
+    "accelerate": 60,
+    "brake": 1.0,
+    "steerAngleDeg": 30,
+    "rollingResistance": 0.008,
+    "airDragCoefficient": 0.004
   },
   "wheels": {
     "defaults": {
       "axleCs": [1, 0, 0],
-      "suspensionRestLength": 0.1,
-      "suspensionStiffness": 36,
-      "maxSuspensionTravel": 0.6,
+      "suspensionRestLength": 0.18,
+      "suspensionStiffness": 45,
+      "maxSuspensionTravel": 0.2,
       "sideFrictionStiffness": 5,
-      "frictionSlip": 2.2,
-      "radius": 0.16
+      "frictionSlip": 1.4,
+      "radius": 0.34
     },
     "placements": [
-      { "position": [-0.46, -0.12, 0.75] },
-      { "position": [0.46, -0.12, 0.75] },
-      { "position": [-0.46, -0.12, -0.7] },
-      { "position": [0.46, -0.12, -0.7] }
+      { "position": [-0.95, -0.3, 1.33] },
+      { "position": [0.95, -0.3, 1.33] },
+      { "position": [-0.95, -0.3, -1.33] },
+      { "position": [0.95, -0.3, -1.33] }
     ]
   },
   "spawn": {
