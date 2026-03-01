@@ -13,20 +13,30 @@
 - **3D Engine:** Three.js + React Three Fiber (R3F)
 - **Physics:** @react-three/rapier v2.2.0 (uses `@dimforge/rapier3d-compat` internally)
 - **Helpers:** @react-three/drei
+- **Styling:** SCSS + CSS Modules (`.module.scss`)
+- **Imports:** `@/` alias maps to `src/` (configured in `tsconfig.app.json` + `vite.config.ts`)
 
 ## Project Structure
 
 ```
 src/
 ├── App.tsx                              # Canvas, Physics, KeyboardControls, UI overlay
+├── App.module.scss                      # Overlay UI styles (selector, reset button)
+├── index.scss                           # Global reset (fullscreen, no overflow)
 ├── main.tsx                             # Entry point
+├── vehicles/                            # Vehicle JSON configs (auto-discovered)
+│   ├── default.json
+│   └── sports.json
 ├── components/
 │   ├── Floor.tsx                        # 1000x1000 checkerboard ground plane
+│   ├── UIButton.tsx                     # Non-focusable button (tabIndex=-1, preventDefault)
+│   ├── UIButton.module.scss
 │   ├── ThirdPersonCamera.tsx            # Unused (camera is inline in Vehicle)
 │   └── Vehicle/
 │       ├── Vehicle.tsx                  # Main component: controls, camera, reset
 │       ├── useVehicleController.ts      # Hook wrapping Rapier's DynamicRayCastVehicleController
-│       └── vehicleConfig.ts            # JSON-serializable VehicleConfig type, defaults, createWheels() factory
+│       ├── vehicleConfig.ts            # Types, parseVehicleJSON(), loadVehicleEntry(), createWheels()
+│       └── vehicles.ts                 # Auto-discovers src/vehicles/*.json, exports VEHICLES
 ```
 
 ## Vehicle System
@@ -40,7 +50,10 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Controls:** WASD + Space (brake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
-- **Config:** `VehicleConfig` type in `vehicleConfig.ts` is JSON-serializable (uses `[number, number, number]` tuples, no Vector3). `DEFAULT_VEHICLE_CONFIG` provides defaults. `createWheels(config)` factory converts tuples to runtime `WheelInfo[]`. `Vehicle` accepts an optional `config` prop for variants.
+- **Config:** Each vehicle is a self-describing JSON file with `name`, `color`, and physics data using `[number, number, number]` tuples (no Vector3). Angles stored as degrees (`steerAngleDeg`), converted to radians by `loadVehicleEntry()`. To add a new vehicle: just drop a `.json` file in `src/vehicles/` — no code changes needed.
+- **Registry:** `vehicles.ts` auto-discovers all `src/vehicles/*.json` files via `import.meta.glob`. Exports `VEHICLES: VehicleEntry[]`.
+- **Validation:** `parseVehicleJSON(raw: unknown)` validates required fields at runtime, replacing unsafe type casts and catching malformed configs early.
+- **Selector:** Chevron UI in `App.tsx` cycles through `VEHICLES`. Changing index remounts `Vehicle` via React `key`.
 
 ## Camera
 
@@ -53,5 +66,7 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 
 - Use functional components with TypeScript.
 - For 3D math, use Three.js classes (`Vector3`, `Quaternion`, `Euler`).
-- All vehicle physics tunables go in `vehicleConfig.ts` as JSON-serializable data, not hardcoded in components.
+- All vehicle physics tunables go in JSON files, not hardcoded in components.
 - `useAfterPhysicsStep` for wheel visual sync; `useFrame` for controls and camera.
+- All overlay UI buttons must use the `UIButton` component which prevents focus via `tabIndex={-1}` and `onMouseDown={preventDefault}`. Never use raw `<button>` in overlay UI.
+- Use SCSS modules (`.module.scss`) for component styles, `@/` alias for cross-directory imports.

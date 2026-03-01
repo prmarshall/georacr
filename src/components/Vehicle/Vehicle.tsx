@@ -11,11 +11,8 @@ import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
 import { Euler, MathUtils, Mesh, Object3D, Quaternion, Vector3 } from "three";
-import {
-  DEFAULT_VEHICLE_CONFIG,
-  createWheels,
-  type VehicleConfig,
-} from "./vehicleConfig";
+import { createWheels, type VehicleConfig } from "./vehicleConfig";
+import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
 
 export interface VehicleHandle {
@@ -35,7 +32,7 @@ const _cameraPosition = new Vector3();
 const _cameraTarget = new Vector3();
 
 export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
-  { config = DEFAULT_VEHICLE_CONFIG },
+  { config = VEHICLES[0].config },
   ref,
 ) {
   const { world, rapier } = useRapier();
@@ -226,7 +223,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
             chassis.halfExtents[2] * 2,
           ]}
         />
-        <meshStandardMaterial color="#e04040" />
+        <meshStandardMaterial color={config.color} />
       </mesh>
 
       {/* wheels */}

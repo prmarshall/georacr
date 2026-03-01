@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { MathUtils, Vector3 } from "three";
 
 // --- JSON-serializable config types ---
 
@@ -19,6 +19,7 @@ export interface WheelPlacement extends Partial<WheelDefaults> {
 }
 
 export interface VehicleConfig {
+  color: string;
   chassis: {
     halfExtents: Vec3Tuple;
   };
@@ -52,43 +53,60 @@ export interface WheelInfo {
   radius: number;
 }
 
-// --- Default config ---
+// --- JSON → VehicleConfig loader ---
 
-export const DEFAULT_VEHICLE_CONFIG: VehicleConfig = {
-  chassis: {
-    halfExtents: [0.8, 0.2, 0.4],
-  },
-  forces: {
-    accelerate: 3,
-    brake: 0.05,
-    steerAngle: Math.PI / 24,
-    rollingResistance: 0.003,
-    airDragCoefficient: 0.0005,
-  },
-  wheels: {
-    defaults: {
-      axleCs: [0, 0, -1],
-      suspensionRestLength: 0.125,
-      suspensionStiffness: 24,
-      maxSuspensionTravel: 1,
-      sideFrictionStiffness: 3,
-      frictionSlip: 1.5,
-      radius: 0.15,
+export interface VehicleConfigJSON {
+  name: string;
+  color: string;
+  chassis: VehicleConfig["chassis"];
+  forces: Omit<VehicleConfig["forces"], "steerAngle"> & {
+    steerAngleDeg: number;
+  };
+  wheels: VehicleConfig["wheels"];
+  spawn: VehicleConfig["spawn"];
+}
+
+const REQUIRED_SECTIONS = [
+  "name",
+  "color",
+  "chassis",
+  "forces",
+  "wheels",
+  "spawn",
+] as const;
+
+export function parseVehicleJSON(raw: unknown): VehicleConfigJSON {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("Vehicle config must be an object");
+  }
+  const obj = raw as Record<string, unknown>;
+  for (const key of REQUIRED_SECTIONS) {
+    if (!(key in obj)) {
+      throw new Error(`Vehicle config missing required field "${key}"`);
+    }
+  }
+  return raw as VehicleConfigJSON;
+}
+
+export interface VehicleEntry {
+  name: string;
+  config: VehicleConfig;
+}
+
+export function loadVehicleEntry(json: VehicleConfigJSON): VehicleEntry {
+  const { name, forces, ...rest } = json;
+  const { steerAngleDeg, ...restForces } = forces;
+  return {
+    name,
+    config: {
+      ...rest,
+      forces: {
+        ...restForces,
+        steerAngle: MathUtils.degToRad(steerAngleDeg),
+      },
     },
-    placements: [
-      // front
-      { position: [-0.65, -0.15, -0.45] },
-      { position: [-0.65, -0.15, 0.45] },
-      // rear
-      { position: [0.65, -0.15, -0.45] },
-      { position: [0.65, -0.15, 0.45] },
-    ],
-  },
-  spawn: {
-    position: [0, 2, 0],
-    rotation: [0, 0, 0],
-  },
-};
+  };
+}
 
 // --- Factory function ---
 

@@ -1,0 +1,41 @@
+.canvas {
+  width: 100vw;
+  height: 100vh;
+}
+
+.vehicleSelector {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vehicleName {
+  color: #fff;
+  font-size: 18px;
+  font-family: sans-serif;
+  min-width: 120px;
+  text-align: center;
+}
+
+.chevron {
+  background: rgba(255, 255, 255, 0.15);
+  font-size: 24px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resetButton {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 10px 20px;
+  font-size: 16px;
+  background: #e04040;
+}
