@@ -56,7 +56,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       if (document.pointerLockElement !== canvas) return;
       orbitAzimuth.current -= e.movementX * MOUSE_SENSITIVITY;
       orbitElevation.current = MathUtils.clamp(
-        orbitElevation.current - e.movementY * MOUSE_SENSITIVITY,
+        orbitElevation.current + e.movementY * MOUSE_SENSITIVITY,
         -0.2, // slight below horizon
         Math.PI / 3, // 60° above
       );

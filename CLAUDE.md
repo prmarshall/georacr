@@ -76,7 +76,7 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 ## Camera
 
 - Inline in `Vehicle.tsx` (not a separate component).
-- **Mouse orbit:** Click to capture pointer lock, Escape to release. Mouse controls azimuth/elevation around the vehicle.
+- **Mouse orbit:** Click to capture pointer lock, Escape to release. Mouse controls azimuth/elevation around the vehicle. Elevation is inverted (mouse down = camera higher).
 - **Default position:** Behind car at +Z, looking toward -Z (azimuth=0).
 - **Smoothing:** Uses `1.0 - 0.01 ** delta` for frame-rate-independent lerp.
 
