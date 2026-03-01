@@ -3,11 +3,11 @@
   "color": "#cc3333",
   "model": "/models/car/muscle.glb",
   "chassis": {
-    "halfExtents": [0.9, 0.2, 0.45]
+    "halfExtents": [1.5, 0.4, 0.85]
   },
   "forces": {
-    "accelerate": 5,
-    "brake": 0.06,
+    "accelerate": 24,
+    "brake": 0.3,
     "steerAngleDeg": 7.5,
     "rollingResistance": 0.003,
     "airDragCoefficient": 0.0004
@@ -15,22 +15,22 @@
   "wheels": {
     "defaults": {
       "axleCs": [0, 0, -1],
-      "suspensionRestLength": 0.125,
+      "suspensionRestLength": 0.5,
       "suspensionStiffness": 24,
       "maxSuspensionTravel": 1,
       "sideFrictionStiffness": 3,
       "frictionSlip": 1.5,
-      "radius": 0.15
+      "radius": 0.33
     },
     "placements": [
-      { "position": [0.7, -0.15, -0.45] },
-      { "position": [0.7, -0.15, 0.45] },
-      { "position": [-0.7, -0.15, -0.45] },
-      { "position": [-0.7, -0.15, 0.45] }
+      { "position": [1.5, 0.2, -0.85] },
+      { "position": [1.5, 0.2, 0.85] },
+      { "position": [-1.5, 0.2, -0.85] },
+      { "position": [-1.5, 0.2, 0.85] }
     ]
   },
   "spawn": {
-    "position": [0, 2, 0],
+    "position": [0, 3, 0],
     "rotation": [0, 0, 0]
   }
 }

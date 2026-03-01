@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -29,8 +30,9 @@ interface VehicleProps {
   config?: VehicleConfig;
 }
 
-const cameraOffset = new Vector3(7, 3, 0);
 const cameraTargetOffset = new Vector3(0, 1.5, 0);
+const ORBIT_DISTANCE = 8;
+const MOUSE_SENSITIVITY = 0.003;
 
 const _bodyPosition = new Vector3();
 const _airControlAngVel = new Vector3();
@@ -42,8 +44,38 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   ref,
 ) {
   const { world, rapier } = useRapier();
-  const threeControls = useThree((s) => s.controls);
+  const gl = useThree((s) => s.gl);
   const [, getKeys] = useKeyboardControls();
+
+  // Mouse orbit state
+  const orbitAzimuth = useRef(Math.PI / 2); // behind car (+X direction, car faces -X)
+  const orbitElevation = useRef(0.35);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleClick = () => {
+      canvas.requestPointerLock();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== canvas) return;
+      orbitAzimuth.current -= e.movementX * MOUSE_SENSITIVITY;
+      orbitElevation.current = MathUtils.clamp(
+        orbitElevation.current - e.movementY * MOUSE_SENSITIVITY,
+        -0.2, // slight below horizon
+        Math.PI / 3, // 60° above
+      );
+    };
+
+    canvas.addEventListener("click", handleClick);
+    document.addEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      canvas.removeEventListener("click", handleClick);
+      document.removeEventListener("mousemove", handleMouseMove);
+    };
+  }, [gl]);
 
   const chassisMeshRef = useRef<Object3D>(null!);
   const chassisBodyRef = useRef<RapierRigidBody>(null!);
@@ -58,13 +90,15 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     [],
   );
 
-  const wheels = useMemo(
-    () =>
-      modelWheelPositions
-        ? createWheelsFromPositions(modelWheelPositions, config)
-        : createWheels(config),
-    [config, modelWheelPositions],
-  );
+  // For model vehicles, wait for the model to report wheel positions before
+  // creating any wheels — avoids creating a throwaway vehicle controller with
+  // wrong positions that gets immediately destroyed and recreated.
+  const wheels = useMemo(() => {
+    if (config.model && !modelWheelPositions) return [];
+    return modelWheelPositions
+      ? createWheelsFromPositions(modelWheelPositions, config)
+      : createWheels(config);
+  }, [config, modelWheelPositions]);
 
   const { vehicleController } = useVehicleController(
     chassisBodyRef,
@@ -95,12 +129,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   useImperativeHandle(ref, () => ({ reset: doReset }), []);
 
   useFrame((state, delta) => {
-    if (
-      !chassisMeshRef.current ||
-      !vehicleController.current ||
-      !!threeControls
-    )
-      return;
+    if (!chassisMeshRef.current || !vehicleController.current) return;
 
     const t = 1.0 - 0.01 ** delta;
 
@@ -134,6 +163,22 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const engineForce = throttle * forces.accelerate;
     controller.setWheelEngineForce(2, engineForce);
     controller.setWheelEngineForce(3, engineForce);
+
+    // TODO: remove debug logging
+    if (throttle !== 0 && Math.random() < 0.02) {
+      const vel = chassisRigidBody.linvel();
+      const pos = chassisRigidBody.translation();
+      const grounded = [];
+      for (let wi = 0; wi < wheels.length; wi++) {
+        grounded.push(controller.wheelGroundObject(wi) != null);
+      }
+      console.log(
+        `throttle=${throttle} force=${engineForce} speed=${controller.currentVehicleSpeed().toFixed(3)}`,
+        `pos(${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)})`,
+        `vel(${vel.x.toFixed(2)},${vel.y.toFixed(2)},${vel.z.toFixed(2)})`,
+        `grounded=[${grounded.join(",")}]`,
+      );
+    }
 
     // brakes: handbrake + rolling resistance + air drag
     const speed = Math.abs(controller.currentVehicleSpeed());
@@ -187,35 +232,30 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       doReset();
     }
 
-    /* camera */
+    /* camera — mouse orbit */
+
+    const bodyPosition = chassisMeshRef.current.getWorldPosition(_bodyPosition);
+
+    const azimuth = orbitAzimuth.current;
+    const elevation = orbitElevation.current;
 
     const cameraPosition = _cameraPosition;
-
-    if (ground.current) {
-      cameraPosition.copy(cameraOffset);
-      const bodyWorldMatrix = chassisMeshRef.current.matrixWorld;
-      cameraPosition.applyMatrix4(bodyWorldMatrix);
-    } else {
-      const velocity = chassisRigidBody.linvel();
-      cameraPosition.set(velocity.x, velocity.y, velocity.z);
-      cameraPosition.normalize();
-      cameraPosition.multiplyScalar(-10);
-      const translation = chassisRigidBody.translation();
-      cameraPosition.add(
-        new Vector3(translation.x, translation.y, translation.z),
-      );
-    }
+    cameraPosition.set(
+      Math.cos(elevation) * Math.sin(azimuth) * ORBIT_DISTANCE,
+      Math.sin(elevation) * ORBIT_DISTANCE + 1.5,
+      Math.cos(elevation) * Math.cos(azimuth) * ORBIT_DISTANCE,
+    );
+    cameraPosition.add(bodyPosition);
 
     cameraPosition.y = Math.max(
       cameraPosition.y,
-      (vehicleController.current?.chassis().translation().y ?? 0) + 1,
+      (vehicleController.current?.chassis().translation().y ?? 0) + 0.5,
     );
 
     smoothedCameraPosition.lerp(cameraPosition, t);
     state.camera.position.copy(smoothedCameraPosition);
 
     // camera target
-    const bodyPosition = chassisMeshRef.current.getWorldPosition(_bodyPosition);
     const cameraTarget = _cameraTarget;
     cameraTarget.copy(bodyPosition);
     cameraTarget.add(cameraTargetOffset);

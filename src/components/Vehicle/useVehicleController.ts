@@ -26,7 +26,7 @@ export function useVehicleController(
   useEffect(() => {
     const chassis = chassisRef.current;
     const wheels = wheelsRef.current;
-    if (!chassis || !wheels) return;
+    if (!chassis || !wheels || wheelsInfo.length === 0) return;
 
     const vehicle = world.createVehicleController(chassis);
 
@@ -44,6 +44,14 @@ export function useVehicleController(
       vehicle.setWheelMaxSuspensionTravel(index, wheel.maxSuspensionTravel);
       vehicle.setWheelFrictionSlip(index, wheel.frictionSlip);
       vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);
+    }
+
+    // TODO: remove debug logging
+    console.log("Vehicle controller created —", wheelsInfo.length, "wheels:");
+    for (const [i, w] of wheelsInfo.entries()) {
+      console.log(
+        `  wheel ${i}: pos(${w.position.x.toFixed(3)}, ${w.position.y.toFixed(3)}, ${w.position.z.toFixed(3)}) r=${w.radius} suspRest=${w.suspensionRestLength}`,
+      );
     }
 
     vehicleController.current = vehicle;
