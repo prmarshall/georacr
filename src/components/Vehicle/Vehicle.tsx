@@ -1,96 +1,207 @@
-import { forwardRef, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
-import { RigidBody, CuboidCollider } from "@react-three/rapier";
+import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
-import { MathUtils, Mesh, Object3D, Clock } from "three";
-import { VEHICLE, WHEELS } from "./vehicleConfig";
+import type { Collider } from "@dimforge/rapier3d-compat";
+import { Euler, MathUtils, Mesh, Object3D, Quaternion, Vector3 } from "three";
+import { VEHICLE, WHEELS, SPAWN } from "./vehicleConfig";
 import { useVehicleController } from "./useVehicleController";
 
-const debugClock = new Clock();
-const DEBUG_INTERVAL = 0.5; // log every 500ms
+export interface VehicleHandle {
+  reset: () => void;
+}
 
-export const Vehicle = forwardRef<RapierRigidBody>(function Vehicle(_, ref) {
-  const chassisRef = useRef<RapierRigidBody>(null!);
+const cameraOffset = new Vector3(7, 3, 0);
+const cameraTargetOffset = new Vector3(0, 1.5, 0);
+
+const _bodyPosition = new Vector3();
+const _airControlAngVel = new Vector3();
+const _cameraPosition = new Vector3();
+const _cameraTarget = new Vector3();
+
+export const Vehicle = forwardRef<VehicleHandle>(function Vehicle(_, ref) {
+  const { world, rapier } = useRapier();
+  const threeControls = useThree((s) => s.controls);
+  const [, getKeys] = useKeyboardControls();
+
   const chassisMeshRef = useRef<Mesh>(null!);
+  const chassisBodyRef = useRef<RapierRigidBody>(null!);
   const wheelsRef = useRef<(Object3D | null)[]>([]);
 
-  const vehicleController = useVehicleController(
-    chassisRef,
+  const { vehicleController } = useVehicleController(
+    chassisBodyRef,
     wheelsRef as React.RefObject<(Object3D | null)[]>,
     WHEELS,
   );
 
-  const [, getKeys] = useKeyboardControls();
+  const [smoothedCameraPosition] = useState(new Vector3(0, 100, -300));
+  const [smoothedCameraTarget] = useState(new Vector3());
 
-  useFrame(() => {
+  const ground = useRef<Collider | null>(null);
+
+  const doReset = () => {
     const controller = vehicleController.current;
     if (!controller) return;
+    const chassis = controller.chassis();
+    chassis.setTranslation(new rapier.Vector3(...SPAWN.position), true);
+    const spawnRot = new Euler(...SPAWN.rotation);
+    const spawnQuat = new Quaternion().setFromEuler(spawnRot);
+    chassis.setRotation(spawnQuat, true);
+    chassis.setLinvel(new rapier.Vector3(0, 0, 0), true);
+    chassis.setAngvel(new rapier.Vector3(0, 0, 0), true);
+  };
 
+  useImperativeHandle(ref, () => ({ reset: doReset }), [
+    rapier,
+    vehicleController,
+  ]);
+
+  useFrame((state, delta) => {
+    if (
+      !chassisMeshRef.current ||
+      !vehicleController.current ||
+      !!threeControls
+    )
+      return;
+
+    const t = 1.0 - 0.01 ** delta;
+
+    const controller = vehicleController.current;
+    const chassisRigidBody = controller.chassis();
     const keys = getKeys() as Record<string, boolean>;
 
-    // Engine: rear-wheel drive (wheels 2, 3) with speed limiting
-    const speed = Math.abs(controller.currentVehicleSpeed());
-    const speedFactor = Math.max(0, 1 - speed / VEHICLE.maxSpeed);
-    const rawForce =
-      Number(keys.backward ?? false) * VEHICLE.accelerateForce -
-      Number(keys.forward ?? false) * VEHICLE.accelerateForce;
-    const engineForce = rawForce * speedFactor;
-    controller.setWheelEngineForce(2, engineForce);
-    controller.setWheelEngineForce(3, engineForce);
+    // ground check
+    const ray = new rapier.Ray(chassisRigidBody.translation(), {
+      x: 0,
+      y: -1,
+      z: 0,
+    });
+    const raycastResult = world.castRay(
+      ray,
+      1,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      chassisRigidBody,
+    );
 
-    // Brakes: all wheels
-    const brake = Number(keys.brake ?? false) * VEHICLE.brakeForce;
-    for (let i = 0; i < WHEELS.length; i++) {
-      controller.setWheelBrake(i, brake);
+    ground.current = null;
+    if (raycastResult) {
+      ground.current = raycastResult.collider;
     }
 
-    // Steering: front wheels with smoothing
-    const steerDir = Number(keys.right ?? false) - Number(keys.left ?? false);
-    const currentSteering = controller.wheelSteering(0) ?? 0;
-    const targetSteering = VEHICLE.steerAngle * steerDir;
-    const steering = MathUtils.lerp(currentSteering, targetSteering, 0.5);
+    // engine: FWD (wheels 0, 1)
+    const throttle = Number(keys.forward) - Number(keys.backward);
+    const engineForce = throttle * VEHICLE.accelerateForce;
+    controller.setWheelEngineForce(0, engineForce);
+    controller.setWheelEngineForce(1, engineForce);
+
+    // brakes: handbrake + rolling resistance + air drag
+    const speed = Math.abs(controller.currentVehicleSpeed());
+    const handBrake = Number(keys.brake) * VEHICLE.brakeForce;
+    const rollingResistance =
+      throttle === 0 && speed > 0.01 ? VEHICLE.rollingResistance : 0;
+    const airDrag = VEHICLE.airDragCoefficient * speed * speed;
+    const totalBrake = handBrake + rollingResistance + airDrag;
+    controller.setWheelBrake(0, totalBrake);
+    controller.setWheelBrake(1, totalBrake);
+    controller.setWheelBrake(2, totalBrake);
+    controller.setWheelBrake(3, totalBrake);
+
+    // steering: front wheels with smoothing
+    const currentSteering = controller.wheelSteering(0) || 0;
+    const steerDirection = Number(keys.left) - Number(keys.right);
+    const steering = MathUtils.lerp(
+      currentSteering,
+      VEHICLE.steerAngle * steerDirection,
+      0.5,
+    );
     controller.setWheelSteering(0, steering);
     controller.setWheelSteering(1, steering);
 
-    // Debounced debug log
-    if (debugClock.getElapsedTime() > DEBUG_INTERVAL) {
-      debugClock.start();
-      const chassis = chassisRef.current;
-      if (chassis) {
-        const pos = chassis.translation();
-        console.log(
-          `pos=(${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}) speed=${speed.toFixed(1)} engine=${engineForce.toFixed(2)} steer=${steering.toFixed(2)}`,
-        );
-      }
-    }
-  });
+    // air control
+    if (!ground.current) {
+      const forwardAngVel = Number(keys.forward) - Number(keys.backward);
+      const sideAngVel = Number(keys.left) - Number(keys.right);
 
-  // Merge forwarded ref with internal ref
-  const setRefs = (instance: RapierRigidBody | null) => {
-    chassisRef.current = instance!;
-    if (typeof ref === "function") {
-      ref(instance);
-    } else if (ref) {
-      (ref as React.MutableRefObject<RapierRigidBody | null>).current =
-        instance;
+      const angvel = _airControlAngVel.set(
+        0,
+        sideAngVel * t,
+        forwardAngVel * t,
+      );
+      angvel.applyQuaternion(
+        chassisRigidBody.rotation() as unknown as Quaternion,
+      );
+      const currentAngvel = chassisRigidBody.angvel();
+      angvel.add(
+        new Vector3(currentAngvel.x, currentAngvel.y, currentAngvel.z),
+      );
+
+      chassisRigidBody.setAngvel(
+        new rapier.Vector3(angvel.x, angvel.y, angvel.z),
+        true,
+      );
     }
-  };
+
+    // reset
+    if (keys.reset) {
+      doReset();
+    }
+
+    /* camera */
+
+    const cameraPosition = _cameraPosition;
+
+    if (ground.current) {
+      // camera behind chassis
+      cameraPosition.copy(cameraOffset);
+      const bodyWorldMatrix = chassisMeshRef.current.matrixWorld;
+      cameraPosition.applyMatrix4(bodyWorldMatrix);
+    } else {
+      // camera behind velocity
+      const velocity = chassisRigidBody.linvel();
+      cameraPosition.set(velocity.x, velocity.y, velocity.z);
+      cameraPosition.normalize();
+      cameraPosition.multiplyScalar(-10);
+      const translation = chassisRigidBody.translation();
+      cameraPosition.add(
+        new Vector3(translation.x, translation.y, translation.z),
+      );
+    }
+
+    cameraPosition.y = Math.max(
+      cameraPosition.y,
+      (vehicleController.current?.chassis().translation().y ?? 0) + 1,
+    );
+
+    smoothedCameraPosition.lerp(cameraPosition, t);
+    state.camera.position.copy(smoothedCameraPosition);
+
+    // camera target
+    const bodyPosition = chassisMeshRef.current.getWorldPosition(_bodyPosition);
+    const cameraTarget = _cameraTarget;
+    cameraTarget.copy(bodyPosition);
+    cameraTarget.add(cameraTargetOffset);
+    smoothedCameraTarget.lerp(cameraTarget, t);
+
+    state.camera.lookAt(smoothedCameraTarget);
+  });
 
   return (
     <RigidBody
-      ref={setRefs}
-      type="dynamic"
-      colliders={false}
+      position={SPAWN.position}
+      rotation={SPAWN.rotation}
       canSleep={false}
-      position={[0, 2, 0]}
-      linearDamping={0.5}
-      angularDamping={0.5}
+      ref={chassisBodyRef}
+      colliders={false}
+      type="dynamic"
     >
       <CuboidCollider args={VEHICLE.chassisHalfExtents} />
 
-      {/* Chassis visual */}
-      <mesh ref={chassisMeshRef} castShadow>
+      {/* chassis */}
+      <mesh ref={chassisMeshRef}>
         <boxGeometry
           args={[
             VEHICLE.chassisHalfExtents[0] * 2,
@@ -101,20 +212,23 @@ export const Vehicle = forwardRef<RapierRigidBody>(function Vehicle(_, ref) {
         <meshStandardMaterial color="#e04040" />
       </mesh>
 
-      {WHEELS.map((wheel, i) => (
+      {/* wheels */}
+      {WHEELS.map((wheel, index) => (
         <group
-          key={i}
-          ref={(el) => {
-            wheelsRef.current[i] = el;
+          key={index}
+          ref={(ref) => {
+            wheelsRef.current[index] = ref;
           }}
           position={wheel.position}
         >
-          <group rotation-z={Math.PI / 2}>
-            <mesh castShadow>
-              <cylinderGeometry
-                args={[wheel.radius, wheel.radius, wheel.radius * 0.6, 16]}
-              />
-              <meshStandardMaterial color="#333" />
+          <group rotation-x={-Math.PI / 2}>
+            <mesh>
+              <cylinderGeometry args={[0.15, 0.15, 0.25, 16]} />
+              <meshStandardMaterial color="#222" />
+            </mesh>
+            <mesh scale={1.01}>
+              <cylinderGeometry args={[0.15, 0.15, 0.25, 6]} />
+              <meshStandardMaterial color="#fff" wireframe />
             </mesh>
           </group>
         </group>

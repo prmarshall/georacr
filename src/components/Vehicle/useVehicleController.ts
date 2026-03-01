@@ -8,75 +8,86 @@ import { type RefObject, useEffect, useRef } from "react";
 import { Object3D, Quaternion, Vector3 } from "three";
 import type { WheelInfo } from "./vehicleConfig";
 
-const _up = new Vector3(0, 1, 0);
-const _steerQuat = new Quaternion();
-const _spinQuat = new Quaternion();
+const up = new Vector3(0, 1, 0);
+
+const _wheelSteeringQuat = new Quaternion();
+const _wheelRotationQuat = new Quaternion();
 
 export function useVehicleController(
   chassisRef: RefObject<RapierRigidBody | null>,
   wheelsRef: RefObject<(Object3D | null)[]>,
-  wheels: WheelInfo[],
+  wheelsInfo: WheelInfo[],
 ) {
   const { world } = useRapier();
-  const controllerRef = useRef<DynamicRayCastVehicleController | null>(null);
+  const vehicleController = useRef<DynamicRayCastVehicleController | null>(
+    null,
+  );
 
   useEffect(() => {
     const chassis = chassisRef.current;
-    if (!chassis) return;
+    const wheels = wheelsRef.current;
+    if (!chassis || !wheels) return;
 
     const vehicle = world.createVehicleController(chassis);
-    const suspDir = new Vector3(0, -1, 0);
 
-    for (const [i, w] of wheels.entries()) {
+    const suspensionDirection = new Vector3(0, -1, 0);
+
+    for (const [index, wheel] of wheelsInfo.entries()) {
       vehicle.addWheel(
-        w.position,
-        suspDir,
-        w.axleCs,
-        w.suspensionRestLength,
-        w.radius,
+        wheel.position,
+        suspensionDirection,
+        wheel.axleCs,
+        wheel.suspensionRestLength,
+        wheel.radius,
       );
-      vehicle.setWheelSuspensionStiffness(i, w.suspensionStiffness);
-      vehicle.setWheelMaxSuspensionTravel(i, w.maxSuspensionTravel);
-      vehicle.setWheelFrictionSlip(i, w.frictionSlip);
-      vehicle.setWheelSideFrictionStiffness(i, w.sideFrictionStiffness);
-      vehicle.setWheelSuspensionCompression(i, w.suspensionCompression);
-      vehicle.setWheelSuspensionRelaxation(i, w.suspensionRelaxation);
+      vehicle.setWheelSuspensionStiffness(index, wheel.suspensionStiffness);
+      vehicle.setWheelMaxSuspensionTravel(index, wheel.maxSuspensionTravel);
+      vehicle.setWheelFrictionSlip(index, wheel.frictionSlip);
+      vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);
     }
 
-    controllerRef.current = vehicle;
+    vehicleController.current = vehicle;
 
     return () => {
-      controllerRef.current = null;
+      vehicleController.current = null;
       world.removeVehicleController(vehicle);
     };
-  }, [chassisRef, wheels, wheelsRef, world]);
+  }, [chassisRef, wheelsInfo, wheelsRef, world]);
 
-  // Sync wheel visuals after each physics step
-  useAfterPhysicsStep((w) => {
-    const controller = controllerRef.current;
-    const wheelObjects = wheelsRef.current;
-    if (!controller || !wheelObjects) return;
+  useAfterPhysicsStep((world) => {
+    if (!vehicleController.current) return;
 
-    controller.updateVehicle(w.timestep);
+    const controller = vehicleController.current;
 
-    for (const [i, obj] of wheelObjects.entries()) {
-      if (!obj) continue;
+    controller.updateVehicle(world.timestep);
 
-      const connection = controller.wheelChassisConnectionPointCs(i)?.y ?? 0;
-      const suspension = controller.wheelSuspensionLength(i) ?? 0;
-      const steering = controller.wheelSteering(i) ?? 0;
-      const rotation = controller.wheelRotation(i) ?? 0;
-      const axle = controller.wheelAxleCs(i);
+    const wheels = wheelsRef.current;
+    if (!wheels) return;
 
-      obj.position.y = connection - suspension;
+    for (const [index, wheel] of wheels.entries()) {
+      if (!wheel) continue;
 
-      _steerQuat.setFromAxisAngle(_up, steering);
-      if (axle) {
-        _spinQuat.setFromAxisAngle(axle as unknown as Vector3, rotation);
-      }
-      obj.quaternion.multiplyQuaternions(_steerQuat, _spinQuat);
+      const wheelAxleCs = controller.wheelAxleCs(index)!;
+      const connection =
+        controller.wheelChassisConnectionPointCs(index)?.y || 0;
+      const suspension = controller.wheelSuspensionLength(index) || 0;
+      const steering = controller.wheelSteering(index) || 0;
+      const rotationRad = controller.wheelRotation(index) || 0;
+
+      wheel.position.y = connection - suspension;
+
+      _wheelSteeringQuat.setFromAxisAngle(up, steering);
+      _wheelRotationQuat.setFromAxisAngle(
+        wheelAxleCs as unknown as Vector3,
+        rotationRad,
+      );
+
+      wheel.quaternion.multiplyQuaternions(
+        _wheelSteeringQuat,
+        _wheelRotationQuat,
+      );
     }
   });
 
-  return controllerRef;
+  return { vehicleController };
 }

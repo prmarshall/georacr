@@ -2,43 +2,67 @@ import { useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import type { RapierRigidBody } from "@react-three/rapier";
 import { Vehicle } from "./components/Vehicle/Vehicle";
+import type { VehicleHandle } from "./components/Vehicle/Vehicle";
 import { Floor } from "./components/Floor";
-import { ThirdPersonCamera } from "./components/ThirdPersonCamera";
 
-const keyMap = [
-  { name: "forward", keys: ["KeyW", "ArrowUp"] },
-  { name: "backward", keys: ["KeyS", "ArrowDown"] },
-  { name: "left", keys: ["KeyA", "ArrowLeft"] },
-  { name: "right", keys: ["KeyD", "ArrowRight"] },
+const controls = [
+  { name: "forward", keys: ["ArrowUp", "KeyW"] },
+  { name: "backward", keys: ["ArrowDown", "KeyS"] },
+  { name: "left", keys: ["ArrowLeft", "KeyA"] },
+  { name: "right", keys: ["ArrowRight", "KeyD"] },
   { name: "brake", keys: ["Space"] },
+  { name: "reset", keys: ["KeyR"] },
 ];
 
-function Scene() {
-  const vehicleRef = useRef<RapierRigidBody>(null);
-
+function Scene({
+  vehicleRef,
+}: {
+  vehicleRef: React.RefObject<VehicleHandle | null>;
+}) {
   return (
     <Physics gravity={[0, -9.81, 0]}>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[10, 15, 10]} intensity={1} castShadow />
       <Floor />
       <Vehicle ref={vehicleRef} />
-      <ThirdPersonCamera targetRef={vehicleRef} />
     </Physics>
   );
 }
 
 export default function App() {
+  const vehicleRef = useRef<VehicleHandle>(null);
+
   return (
-    <KeyboardControls map={keyMap}>
+    <>
       <Canvas
         shadows
         camera={{ fov: 60, near: 0.1, far: 1000 }}
         style={{ width: "100vw", height: "100vh" }}
       >
-        <Scene />
+        <KeyboardControls map={controls}>
+          <Scene vehicleRef={vehicleRef} />
+        </KeyboardControls>
+
+        <ambientLight intensity={1} />
+        <hemisphereLight intensity={0.5} />
       </Canvas>
-    </KeyboardControls>
+
+      <button
+        onClick={() => vehicleRef.current?.reset()}
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          padding: "10px 20px",
+          fontSize: 16,
+          background: "#e04040",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          cursor: "pointer",
+        }}
+      >
+        Reset (R)
+      </button>
+    </>
   );
 }
