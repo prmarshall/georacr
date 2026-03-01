@@ -179,20 +179,24 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       steerThrottleReduction *
       clutchFactor *
       gearMultiplier;
-    const driveRear = driveType === "RWD" || driveType === "AWD";
-    const driveFront = driveType === "FWD" || driveType === "AWD";
-    controller.setWheelEngineForce(0, driveRear ? engineForce : 0);
-    controller.setWheelEngineForce(1, driveRear ? engineForce : 0);
-    controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
-    controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
-
-    // brakes: handbrake only via wheel brakes
+    // handbrake: locks rear wheels only (front stays free)
+    // On RWD/AWD the brake and engine fight over the same rear wheels —
+    // the clamped brake absorbs engine power, so rear engine force is killed.
     speedRef.current = speed;
     const handBrake = Number(keys.brake) * forces.brake;
+    const handbrakeActive = handBrake > 0;
+
+    const driveRear = driveType === "RWD" || driveType === "AWD";
+    const driveFront = driveType === "FWD" || driveType === "AWD";
+    const rearEngineForce = driveRear && !handbrakeActive ? engineForce : 0;
+    controller.setWheelEngineForce(0, rearEngineForce);
+    controller.setWheelEngineForce(1, rearEngineForce);
+    controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
+    controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
     controller.setWheelBrake(0, handBrake);
     controller.setWheelBrake(1, handBrake);
-    controller.setWheelBrake(2, handBrake);
-    controller.setWheelBrake(3, handBrake);
+    controller.setWheelBrake(2, 0);
+    controller.setWheelBrake(3, 0);
 
     // air drag + rolling resistance applied directly to chassis body
     // (setWheelBrake clamps internally, causing artificial speed caps)
@@ -232,15 +236,26 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
 
-    // Dynamic side friction: reduce front wheel lateral grip when reversing + steering
-    // so they can slide into a proper arc instead of anchoring and pivoting
+    // Dynamic wheel friction
     const reverseSteering = isReversing && steerInput > 0;
     for (let i = 0; i < wheels.length; i++) {
       const baseSideFriction = wheels[i].sideFrictionStiffness;
+      const baseFrictionSlip = wheels[i].frictionSlip;
       const isFront = i >= 2;
-      const sideFriction =
-        isFront && reverseSteering ? baseSideFriction * 0.2 : baseSideFriction;
+      const isRear = i < 2;
+      let sideFriction = baseSideFriction;
+      let frictionSlip = baseFrictionSlip;
+      // Reduce front grip when reversing + steering (prevents pivot-spin)
+      if (isFront && reverseSteering) sideFriction *= 0.2;
+      // Handbrake: at speed, locked rear wheels lose grip and slide.
+      // At low speed, wheels lock in place (full friction retained).
+      if (isRear && handbrakeActive) {
+        const driftFactor = MathUtils.clamp(speedKmh / 30, 0, 1);
+        sideFriction *= MathUtils.lerp(1.0, 0.1, driftFactor);
+        frictionSlip *= MathUtils.lerp(1.0, 0.1, driftFactor);
+      }
       controller.setWheelSideFrictionStiffness(i, sideFriction);
+      controller.setWheelFrictionSlip(i, frictionSlip);
     }
 
     // air control
