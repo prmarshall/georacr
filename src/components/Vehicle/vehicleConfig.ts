@@ -28,6 +28,9 @@ export interface VehicleConfig {
   chassis: {
     halfExtents: Vec3Tuple;
     density?: number;
+    /** Shift effective center of mass along Y axis via phantom mass.
+     *  Negative values lower the CoM (e.g. -0.5 to prevent wheelies on RWD). */
+    centerOfMassY?: number;
   };
   forces: {
     accelerate: number;

@@ -4,7 +4,8 @@
   "driveType": "RWD",
   "chassis": {
     "halfExtents": [0.99, 0.45, 2.24],
-    "density": 3
+    "density": 3,
+    "centerOfMassY": -0.2
   },
   "forces": {
     "accelerate": 100,
