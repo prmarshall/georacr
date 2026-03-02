@@ -30,6 +30,11 @@ src/
 │   └── tractor.json                     # Slow debug vehicle
 ├── components/
 │   ├── Floor.tsx                        # 1000x1000 checkerboard ground plane
+│   ├── HUD.tsx                          # HUD orchestrator (Speedometer + Stopwatch)
+│   ├── HUD.module.scss                  # Styles for all HUD instruments
+│   ├── Speedometer.tsx                  # mph primary + km/h secondary, ref-based updates
+│   ├── Stopwatch.tsx                    # Elapsed time since first accel, contains ZeroToSixty
+│   ├── ZeroToSixty.tsx                  # 0-60 mph timer, useState for conditional render
 │   ├── UIButton.tsx                     # Non-focusable button (tabIndex=-1, preventDefault)
 │   ├── UIButton.module.scss
 │   ├── ThirdPersonCamera.tsx            # Unused (camera is inline in Vehicle)
@@ -55,8 +60,9 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Controls:** WASD + Space (handbrake) + R (reset). Defined in `App.tsx` via `KeyboardControls`.
 - **Air Control:** When not grounded, WASD applies angular velocity for mid-air rotation.
 - **Reset:** Exposed via `VehicleHandle` ref (`useImperativeHandle`). Callable from R key or UI button.
-- **Speedometer:** `VehicleHandle.speed` (getter backed by `speedRef`) is updated each frame with chassis `linvel()` magnitude. `Speedometer` component in `App.tsx` reads it via `requestAnimationFrame` loop (no React re-renders) and displays km/h + mph. Exponential smoothing (factor 0.15) prevents flicker.
-- **Stopwatch:** `Stopwatch` component in `App.tsx` starts on first accelerate key press (W/ArrowUp). Resets on R key or Reset button. Uses `performance.now()` for accurate timing.
+- **Speedometer:** `VehicleHandle.speed` (getter backed by `speedRef`) is updated each frame with chassis `linvel()` magnitude. `Speedometer` component reads it via `requestAnimationFrame` loop (ref + `textContent`, no React re-renders) and displays mph (primary, large) + km/h (secondary, smaller/dimmer). Exponential smoothing (factor 0.15) prevents flicker.
+- **Stopwatch:** Starts on first accelerate key press (W/ArrowUp). Resets on R key or Reset button. Uses `performance.now()` for accurate timing. Owns `startTime` ref and passes it to child ZeroToSixty component. Uses ref + `textContent` for display (no re-renders).
+- **0-60 mph timer:** `ZeroToSixty` component, child of `Stopwatch`. Monitors speed each frame via rAF, captures time once speed >= 60 mph. Uses `useState` (not ref) for captured time — renders null until triggered, then shows red text with time. Resets on `resetKey` change.
 - **Config:** Each vehicle is a self-describing JSON file with `name`, `color`, and physics data using `[number, number, number]` tuples (no Vector3). Angles stored as degrees (`steerAngleDeg`), converted to radians by `loadVehicleEntry()`. To add a new vehicle: just drop a `.json` file in `src/vehicles/` — no code changes needed.
 - **Chassis density:** Optional `chassis.density` (default 1). Rapier computes mass from collider volume \* density. When increasing density, scale forces, suspension stiffness, side friction stiffness, rolling resistance, and air drag proportionally to maintain the same driving feel.
 - **Suspension damping:** Optional `suspensionDamping` on wheel defaults/placements. Applied to both Rapier's `setWheelSuspensionCompression` and `setWheelSuspensionRelaxation`. Prevents resonance tipping from rapid input changes. Scale proportionally with suspension stiffness.
@@ -111,6 +117,11 @@ When adjusting vehicle configs, keep these relationships in mind:
 - **Position smoothing:** Uses `1.0 - 0.01 ** delta` for frame-rate-independent lerp.
 - **Yaw smoothing:** Uses `1.0 - 0.02 ** delta` (slower than position) with `sharpTurnFactor` that scales from 1.0 (straight) to 0.05 (sharp turn at yaw rate >= 3 rad/s).
 
+## HUD
+
+- **HUD.tsx** orchestrates driving instruments (`Speedometer`, `Stopwatch`). Vehicle selector and reset button are general UI in `App.tsx`, NOT part of HUD.
+- **Refs vs useState rule:** Use refs + `textContent` for values that update every frame (speedometer, stopwatch elapsed). Use `useState` for discrete events that drive conditional rendering (0-60 capture). Never read refs during render (React 19 strict mode). If a value controls `if (x === null) return null`, it must be state.
+
 ## Guidelines
 
 - Use functional components with TypeScript.
@@ -119,3 +130,57 @@ When adjusting vehicle configs, keep these relationships in mind:
 - `useAfterPhysicsStep` for wheel visual sync; `useFrame` for controls and camera.
 - All overlay UI buttons must use the `UIButton` component which prevents focus via `tabIndex={-1}` and `onMouseDown={preventDefault}`. Never use raw `<button>` in overlay UI.
 - Use SCSS modules (`.module.scss`) for component styles, `@/` alias for cross-directory imports.
+- **Refs vs state:** Refs for high-frequency per-frame updates (60fps DOM writes via `textContent`). `useState` for one-shot discrete events that trigger re-renders (conditional rendering, showing/hiding elements).
+
+## Reference: DynamicRayCastVehicleController (Full API)
+
+### 1. Initialization & Core
+
+- `constructor(...)`: Initializes the controller.
+- `addWheel(...)`: Adds a wheel to the chassis.
+- `chassis()`: Returns the underlying rigid-body.
+- `updateVehicle(dt)`: Steps the simulation. Must be called in the physics loop.
+- `free()`: Cleans up the controller memory.
+
+### 2. Vehicle Orientation
+
+- `indexForwardAxis` / `setIndexForwardAxis`: Gets/sets the forward axis (X, Y, or Z).
+- `indexUpAxis`: Gets the upward axis of the vehicle.
+
+### 3. Dynamics & Input (Setters)
+
+- `setWheelEngineForce(i, force)`: Apply torque to wheel `i`.
+- `setWheelBrake(i, brake)`: Apply braking force to wheel `i`.
+- `setWheelSteering(i, angle)`: Turn wheel `i` (in radians).
+
+### 4. Suspension Tuning
+
+- `setWheelSuspensionRestLength(i, val)`: The "natural" height of the spring.
+- `setWheelSuspensionStiffness(i, val)`: Spring constant (K).
+- `setWheelSuspensionCompression(i, val)`: Damping when the spring is squashed.
+- `setWheelSuspensionRelaxation(i, val)`: Damping when the spring rebounds.
+- `setWheelMaxSuspensionTravel(i, val)`: Physical limit of spring movement.
+- `setWheelMaxSuspensionForce(i, val)`: Maximum force the spring can apply.
+
+### 5. Traction & Friction
+
+- `setWheelFrictionSlip(i, val)`: Longitudinal grip limit.
+- `setWheelSideFrictionStiffness(i, val)`: Lateral grip (higher = snappier, lower = driftier).
+
+### 6. Wheel Geometry & Placement
+
+- `setWheelRadius(i, radius)`: Physical size of the wheel.
+- `setWheelChassisConnectionPointCs(i, pos)`: Where the strut meets the car.
+- `setWheelDirectionCs(i, dir)`: Direction the suspension travels.
+- `setWheelAxleCs(i, axle)`: The axis the wheel rotates around.
+
+### 7. Real-time Telemetry (Getters)
+
+- `currentVehicleSpeed()`: Current speed magnitude.
+- `numWheels()`: Total wheel count.
+- `wheelIsInContact(i)`: Boolean check for ground contact.
+- `wheelGroundObject(i)`: The collider the wheel is touching.
+- `wheelContactPoint(i)` / `wheelContactNormal(i)`: Physics data at the tire patch.
+- `wheelSuspensionLength(i)` / `wheelSuspensionForce(i)`: Current spring state.
+- `wheelForwardImpulse(i)` / `wheelSideImpulse(i)`: Friction forces being applied.
+- `wheelRotation(i)`: For visual wheel spinning FX.

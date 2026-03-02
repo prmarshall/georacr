@@ -7,6 +7,7 @@ import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
 import type { VehicleConfig } from "@/components/Vehicle/vehicleConfig";
 import { VEHICLES } from "@/components/Vehicle/vehicles";
 import { Floor } from "@/components/Floor";
+import { HUD } from "@/components/HUD";
 import { UIButton } from "@/components/UIButton";
 import styles from "@/App.module.scss";
 
@@ -33,86 +34,6 @@ function Scene({
       <Floor />
       <Vehicle key={vehicleIndex} ref={vehicleRef} config={config} />
     </Physics>
-  );
-}
-
-function Speedometer({
-  vehicleRef,
-}: {
-  vehicleRef: React.RefObject<VehicleHandle | null>;
-}) {
-  const kmhRef = useRef<HTMLSpanElement>(null);
-  const mphRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    let raf: number;
-    let smoothedKmh = 0;
-    const update = () => {
-      if (kmhRef.current && mphRef.current && vehicleRef.current) {
-        const rawKmh = vehicleRef.current.speed * 3.6;
-        smoothedKmh += (rawKmh - smoothedKmh) * 0.15;
-        kmhRef.current.textContent = `${Math.round(smoothedKmh)}`;
-        mphRef.current.textContent = `${Math.round(smoothedKmh * 0.621371)}`;
-      }
-      raf = requestAnimationFrame(update);
-    };
-    raf = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(raf);
-  }, [vehicleRef]);
-
-  return (
-    <div className={styles.speedometer}>
-      <span ref={kmhRef} className={styles.speedValue}>
-        0
-      </span>
-      <span className={styles.speedUnit}>km/h</span>
-      <span ref={mphRef} className={styles.speedValue}>
-        0
-      </span>
-      <span className={styles.speedUnit}>mph</span>
-    </div>
-  );
-}
-
-function Stopwatch({ resetKey }: { resetKey: number }) {
-  const spanRef = useRef<HTMLSpanElement>(null);
-  const startTime = useRef<number | null>(null);
-
-  useEffect(() => {
-    startTime.current = null;
-    if (spanRef.current) spanRef.current.textContent = "0.00";
-  }, [resetKey]);
-
-  useEffect(() => {
-    const accelKeys = new Set(["ArrowUp", "KeyW"]);
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (startTime.current === null && accelKeys.has(e.code)) {
-        startTime.current = performance.now();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [resetKey]);
-
-  useEffect(() => {
-    let raf: number;
-    const update = () => {
-      if (spanRef.current && startTime.current !== null) {
-        const elapsed = (performance.now() - startTime.current) / 1000;
-        spanRef.current.textContent = elapsed.toFixed(2);
-      }
-      raf = requestAnimationFrame(update);
-    };
-    raf = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(raf);
-  }, [resetKey]);
-
-  return (
-    <div className={styles.stopwatch}>
-      <span ref={spanRef}>0.00</span>
-      <span className={styles.speedUnit}> s</span>
-    </div>
   );
 }
 
@@ -181,8 +102,7 @@ export default function App() {
         </UIButton>
       </div>
 
-      <Speedometer vehicleRef={vehicleRef} />
-      <Stopwatch resetKey={resetKey} />
+      <HUD vehicleRef={vehicleRef} resetKey={resetKey} />
 
       <UIButton onClick={handleReset} className={styles.resetButton}>
         Reset (R)
