@@ -53,11 +53,12 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
   const wheels = useMemo(() => createWheels(config), [config]);
 
-  const { vehicleController, wheelContacts } = useVehicleController(
-    chassisBodyRef,
-    wheelsRef as React.RefObject<(Object3D | null)[]>,
-    wheels,
-  );
+  const { vehicleController, wheelContacts, wheelSuspensionForces } =
+    useVehicleController(
+      chassisBodyRef,
+      wheelsRef as React.RefObject<(Object3D | null)[]>,
+      wheels,
+    );
 
   const speedRef = useRef(0);
   const [brakeLightMat] = useMemo(
@@ -194,10 +195,13 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     // --- dynamic wheel friction ---
     const frictions = computeWheelFriction(
       wheels,
+      driveType,
       engine.speedKmh,
+      engine.throttle,
       engine.isReversing,
       engine.steerInput,
       engine.handbrakeActive,
+      wheelSuspensionForces.current,
     );
     for (let i = 0; i < wheels.length; i++) {
       controller.setWheelSideFrictionStiffness(i, frictions[i].sideFriction);

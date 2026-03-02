@@ -28,6 +28,7 @@ export function useVehicleController(
   const wheelContacts = useRef<boolean[]>([]);
   const wheelForwardImpulses = useRef<number[]>([]);
   const wheelSideImpulses = useRef<number[]>([]);
+  const wheelSuspensionForces = useRef<number[]>([]);
 
   useEffect(() => {
     const chassis = chassisRef.current;
@@ -60,6 +61,7 @@ export function useVehicleController(
     wheelContacts.current = new Array(wheelsInfo.length).fill(false);
     wheelForwardImpulses.current = new Array(wheelsInfo.length).fill(0);
     wheelSideImpulses.current = new Array(wheelsInfo.length).fill(0);
+    wheelSuspensionForces.current = new Array(wheelsInfo.length).fill(0);
 
     return () => {
       vehicleController.current = null;
@@ -92,6 +94,8 @@ export function useVehicleController(
       wheelContacts.current[i] = controller.wheelIsInContact(i);
       wheelForwardImpulses.current[i] = controller.wheelForwardImpulse(i) ?? 0;
       wheelSideImpulses.current[i] = controller.wheelSideImpulse(i) ?? 0;
+      wheelSuspensionForces.current[i] =
+        controller.wheelSuspensionForce(i) ?? 0;
     }
 
     for (const [index, wheel] of wheels.entries()) {
@@ -129,5 +133,6 @@ export function useVehicleController(
     wheelContacts,
     wheelForwardImpulses,
     wheelSideImpulses,
+    wheelSuspensionForces,
   };
 }

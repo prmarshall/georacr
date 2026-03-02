@@ -164,13 +164,7 @@ export function computeSteering(
     1.0,
     MathUtils.clamp(speedKmh / 20, 0, 1),
   );
-  // High-speed reduction for stability (100% at 30 km/h → 30% at 150+ km/h)
-  const highSpeedReduction = MathUtils.lerp(
-    1.0,
-    0.3,
-    MathUtils.clamp((speedKmh - 30) / 120, 0, 1),
-  );
-  const maxAngle = forces.steerAngle * lowSpeedBoost * highSpeedReduction;
+  const maxAngle = forces.steerAngle * lowSpeedBoost;
 
   const steerDirection = Number(keys.left) - Number(keys.right);
   const targetSteering = maxAngle * steerDirection;
@@ -246,21 +240,68 @@ export interface WheelFrictionResult {
 
 export function computeWheelFriction(
   wheels: WheelInfo[],
+  driveType: VehicleConfig["driveType"],
   speedKmh: number,
+  throttle: number,
   isReversing: boolean,
   steerInput: number,
   handbrakeActive: boolean,
+  suspensionForces: number[],
 ): WheelFrictionResult[] {
   const reverseSteering = isReversing && steerInput > 0;
+  const driveRear = driveType === "RWD" || driveType === "AWD";
+  const driveFront = driveType === "FWD" || driveType === "AWD";
+
+  // Load-dependent grip: wheels with less suspension load get less lateral grip.
+  // During cornering, inside wheels unload → lose grip → car rotates.
+  // Compute average load as baseline, then scale each wheel's grip by its
+  // load ratio. This naturally simulates weight transfer from the suspension.
+  let avgForce = 0;
+  for (let i = 0; i < suspensionForces.length; i++) {
+    avgForce += suspensionForces[i];
+  }
+  avgForce = avgForce / (suspensionForces.length || 1);
 
   return wheels.map((wheel, i) => {
     const isFront = i >= 2;
     const isRear = i < 2;
-    let sideFriction = wheel.sideFrictionStiffness;
+
+    // Tire load sensitivity: grip does NOT scale linearly with load.
+    // Underloaded wheels lose grip proportionally, but overloaded wheels
+    // get diminishing returns — the grip coefficient decreases at high loads.
+    // This means weight transfer always reduces total axle grip, making
+    // the car more dynamic in corners (inside loses more than outside gains).
+    const rawRatio = avgForce > 0.01 ? suspensionForces[i] / avgForce : 1.0;
+    const loadRatio =
+      rawRatio <= 1.0
+        ? MathUtils.clamp(rawRatio, 0.1, 1.0)
+        : 1.0 + (rawRatio - 1.0) * 0.2; // 80% diminishing returns above nominal
+    let sideFriction = wheel.sideFrictionStiffness * loadRatio;
     let frictionSlip = wheel.frictionSlip;
 
     // Reduce front lateral grip when reversing + steering (prevents pivot-spin)
     if (isFront && reverseSteering) sideFriction *= 0.2;
+
+    // Friction circle: drive wheels under throttle lose additional lateral grip.
+    // Longitudinal force (drive) competes with lateral force (cornering).
+    // Full throttle + turn = drive wheels break loose.
+    // Reduces BOTH sideFriction (spring rate) AND frictionSlip (force cap).
+    // Without reducing frictionSlip, the tire reaches the same max lateral force
+    // at a slightly larger slip angle — it never "lets go." Reducing the cap
+    // simulates the drop-off past peak slip angle in real tire curves (Pacejka).
+    const isDriveWheel = (isRear && driveRear) || (isFront && driveFront);
+    if (isDriveWheel && !handbrakeActive) {
+      const absThrottle = Math.abs(throttle);
+      const speedOnset = MathUtils.clamp(speedKmh / 30, 0, 1);
+      const maxLoss = MathUtils.lerp(
+        0.3,
+        0.6,
+        MathUtils.clamp(speedKmh / 100, 0, 1),
+      );
+      const gripLoss = absThrottle * steerInput * speedOnset * maxLoss;
+      sideFriction *= 1.0 - gripLoss;
+      frictionSlip *= 1.0 - gripLoss;
+    }
 
     // Handbrake: at speed, locked rear wheels lose grip and slide.
     // At low speed, wheels lock in place (full friction retained).
