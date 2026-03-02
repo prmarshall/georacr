@@ -186,9 +186,10 @@ export function computeYawCorrection(
   linvel: Vec3,
   angvel: Vec3,
   chassisRotation: { x: number; y: number; z: number; w: number },
-  steerDirection: number,
+  smoothSteerAmount: number,
   hSpeedKmh: number,
   drift: DriftState,
+  delta: number,
 ): Vec3 | null {
   // Only active when grounded, moving, and not handbraking
   // (caller gates on ground.current && !handbrakeActive)
@@ -201,19 +202,32 @@ export function computeYawCorrection(
   drift.current += (drift.target - drift.current) * 0.05;
   const driftVal = drift.current;
 
-  if (steerDirection === 0) {
+  // Blend damping with actual wheel angle (0 = centered, 1 = full lock).
+  // When wheels are turned, the driver is actively steering — don't fight them.
+  // As wheels center (slew rate ~0.17s), damping fades in smoothly.
+  // This prevents the "instant damping activation" jitter when releasing the
+  // steer key during oversteer recovery.
+  const dampBlend = 1.0 - smoothSteerAmount;
+
+  if (dampBlend > 0.01) {
     const yawRate = Math.abs(angvel.y);
-    // Aggressive damping for spins, gentle for normal driving
-    const dampFactor = MathUtils.lerp(
-      0.95,
-      0.7,
+
+    // Frame-rate-independent damping via exponential decay.
+    // dampRate = desired fraction removed per second (at 60fps reference).
+    // Higher yaw rates get stronger damping to kill spins.
+    const dampRate = MathUtils.lerp(
+      3.0,
+      20.0,
       MathUtils.clamp(yawRate / 3, 0, 1),
     );
-    let newYaw = angvel.y * dampFactor + driftVal;
+    const dampFactor = Math.exp(-dampRate * delta);
 
-    // Self-centering only when yaw rate is low (not during spins —
-    // atan2 is unstable at high spin rates and correction oscillates)
-    if (yawRate < 0.5) {
+    // Apply damping scaled by blend (smooth transition from steering to centering)
+    let newYaw = MathUtils.lerp(angvel.y, angvel.y * dampFactor, dampBlend);
+    newYaw += driftVal;
+
+    // Self-centering only when yaw rate is low and wheels mostly centered
+    if (yawRate < 0.5 && dampBlend > 0.5) {
       const rot = chassisRotation;
       const fx = 2 * (rot.x * rot.z + rot.w * rot.y);
       const fz = 1 - 2 * (rot.x * rot.x + rot.y * rot.y);
@@ -222,7 +236,7 @@ export function computeYawCorrection(
       let yawError = headingYaw - velocityYaw;
       yawError = ((yawError + Math.PI) % (2 * Math.PI)) - Math.PI;
       if (yawError < -Math.PI) yawError += 2 * Math.PI;
-      newYaw += yawError * 2.0;
+      newYaw += yawError * 2.0 * dampBlend;
     }
 
     return { x: angvel.x, y: newYaw, z: angvel.z };

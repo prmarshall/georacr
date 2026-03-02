@@ -162,22 +162,31 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
 
+    // Normalized actual wheel angle (0 = centered, 1 = full lock).
+    // Used by both yaw correction (damping blend) and friction circle (grip loss).
+    // Transitions smoothly via steering slew rate (~0.17s to center), preventing
+    // instant snap-back when the steer key is released.
+    const smoothSteerInput = Math.min(
+      Math.abs(steering) / forces.steerAngle,
+      1.0,
+    );
+
     // --- yaw correction (drift + damping + self-centering) ---
     const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
     const hSpeedKmh = hSpeed * 3.6;
     const movingBackward = forwardSpeed < -1;
     if (anyWheelGrounded && !engine.handbrakeActive && !movingBackward) {
       const angvel = chassisRigidBody.angvel();
-      const steerDirection = Number(keys.left) - Number(keys.right);
       const chassisRot = chassisRigidBody.rotation();
 
       const newAngvel = computeYawCorrection(
         linvel,
         angvel,
         chassisRot,
-        steerDirection,
+        smoothSteerInput,
         hSpeedKmh,
         driftState.current,
+        delta,
       );
       if (newAngvel) {
         chassisRigidBody.setAngvel(
@@ -199,7 +208,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       engine.speedKmh,
       engine.throttle,
       engine.isReversing,
-      engine.steerInput,
+      smoothSteerInput,
       engine.handbrakeActive,
       wheelSuspensionForces.current,
     );
