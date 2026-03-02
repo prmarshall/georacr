@@ -44,6 +44,7 @@ function useRoadTexture() {
     // Repeat along length: 1000m road, each tile covers ~4m
     tex.repeat.set(1, 250);
     tex.magFilter = NearestFilter;
+    tex.anisotropy = 16;
     return tex;
   }, []);
 }
@@ -116,7 +117,7 @@ export function Floor() {
         <meshStandardMaterial map={checkerMap} />
       </mesh>
       {/* 1km road — starts at spawn, runs in -Z direction */}
-      <mesh position={[0, 0.01, -ROAD_LENGTH / 2]} rotation-x={-Math.PI / 2}>
+      <mesh position={[0, 0.05, -ROAD_LENGTH / 2]} rotation-x={-Math.PI / 2}>
         <planeGeometry args={[ROAD_WIDTH, ROAD_LENGTH]} />
         <meshStandardMaterial map={roadMap} />
       </mesh>

@@ -29,7 +29,7 @@ src/
 │   ├── sports.json
 │   └── tractor.json                     # Slow debug vehicle
 ├── components/
-│   ├── Floor.tsx                        # 1000x1000 checkerboard ground plane
+│   ├── Floor.tsx                        # 6000x6000 checkerboard ground + road + finish line
 │   ├── HUD.tsx                          # HUD orchestrator (Speedometer + Stopwatch)
 │   ├── HUD.module.scss                  # Styles for all HUD instruments
 │   ├── Speedometer.tsx                  # mph primary + km/h secondary, ref-based updates
@@ -116,6 +116,13 @@ When adjusting vehicle configs, keep these relationships in mind:
 - **Rapier's `wheelRotation()` is broken** for straight-line driving — its internal `currentVehicleSpeed()` oscillates sign, causing accumulated rotation to cancel out. Do NOT use `wheelRotation()`.
 - **Fix:** Manual accumulator in `useVehicleController.ts` computes forward speed from chassis linear velocity projected onto chassis forward direction (`-Z` rotated by chassis quaternion). Rotation is `-(forwardSpeed * dt / radius)` per frame (negative sign = correct visual spin direction for -Z forward).
 - The `wheelRotations` ref array is reset when the vehicle controller is recreated.
+
+## Scene & Rendering
+
+- **Sky:** drei `<Sky>` with `distance={450000}`. Default distance is only 1000 — the camera exits the sky box when driving far from origin, causing black sky. Always set distance much larger than the playable area.
+- **Fog:** Linear fog `["#b0d0f0", 5, 250]` — starts at 5 units, fully opaque at 250. Color matched to sky horizon for seamless fade.
+- **Floor:** 6000×6000 checkerboard ground plane with 1km road along -Z. Road raised to Y=0.05 to avoid z-fighting with ground (Y=-0.1).
+- **Road texture:** 64×256 canvas texture with `anisotropy=16` to prevent blurriness at oblique viewing angles ahead of the car. Without anisotropic filtering, mipmapping aggressively blurs road markings at low grazing angles.
 
 ## Camera
 
