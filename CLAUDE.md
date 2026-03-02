@@ -39,10 +39,10 @@ src/
 │   ├── UIButton.module.scss
 │   ├── ThirdPersonCamera.tsx            # Unused (camera is inline in Vehicle)
 │   └── Vehicle/
-│       ├── Vehicle.tsx                  # Thin orchestrator: refs, ground check, Rapier API calls, JSX
+│       ├── Vehicle.tsx                  # Thin orchestrator: refs, Rapier API calls, brake lights, JSX
 │       ├── vehiclePhysics.ts            # Pure functions: engine, drivetrain, drag, steering, yaw, friction, air control
 │       ├── useChaseCamera.ts            # Chase camera hook (mouse orbit, GTA5-style follow, pointer lock)
-│       ├── useVehicleController.ts      # Hook wrapping Rapier's DynamicRayCastVehicleController
+│       ├── useVehicleController.ts      # Hook wrapping Rapier's DynamicRayCastVehicleController + wheel telemetry
 │       ├── vehicleConfig.ts            # Types, parseVehicleJSON(), loadVehicleEntry(), createWheels()
 │       └── vehicles.ts                 # Auto-discovers src/vehicles/*.json, exports VEHICLES
 ```
@@ -53,7 +53,7 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 
 - **Controller:** Rapier's built-in `DynamicRayCastVehicleController` via `world.createVehicleController(chassis)`. Do NOT use manual raycast suspension or Hooke's Law.
 - **Drive type:** Configurable per vehicle via `driveType` field (`"FWD"`, `"RWD"`, `"AWD"`, default `"FWD"`). Sedan = FWD, Sports = RWD, Tractor = RWD. Engine force applied to appropriate wheels (0,1 = rear, 2,3 = front).
-- **Deceleration:** Rolling resistance (constant force when no throttle) + air drag (force proportional to speed²). Both applied via `chassisRigidBody.addForce()` — NOT `setWheelBrake`, which clamps internally and causes artificial speed caps.
+- **Deceleration:** Rolling resistance (constant force when no throttle) + air drag (force proportional to speed²). Both applied via `chassisRigidBody.addForce()` — NOT `setWheelBrake`, which clamps internally and causes artificial speed caps. No native Rapier drag exists (`linearDamping` is v-proportional, not v²). `resetForces(true)` clears only our drag, not the controller's impulses.
 - **Foot brake (S key):** Brake-then-reverse: when moving forward > 5 km/h, S applies foot brake (all 4 wheels, rear-biased 70/30 to prevent nose-dive flip). Below 5 km/h, S switches to reverse engine. Separate `brake` and `handbrake` values in JSON configs.
 - **Handbrake (Space):** Realistic rear-wheel-only brake. Locks rear wheels — at low speed wheels hold firm (full friction), at 30+ km/h rear loses grip for drift/spin (friction drops to 40%). On RWD/AWD, rear engine force is killed when handbrake active (brake and engine fight over same wheels). On FWD, front wheels still drive. Uses both `setWheelFrictionSlip` and `setWheelSideFrictionStiffness` dynamically. Drift+self-centering system disabled during handbrake to prevent oscillation.
 - **Brake lights:** Two red emissive rectangles at rear of chassis. Light up during foot brake or reverse, NOT during handbrake. Shared `MeshStandardMaterial` instance updated per frame.
@@ -75,13 +75,17 @@ Based on [isaac-mason/sketches](https://github.com/isaac-mason/sketches/tree/mai
 - **Reverse side friction:** Front wheel `sideFrictionStiffness` dynamically reduced to 20% when reversing + steering, preventing front wheels from anchoring and causing pivot-spin. Resets to normal immediately when going forward.
 - **Yaw-rate damping:** When not steering, Y angular velocity is damped per frame. Scales with spin rate: gentle (5%) at low yaw rates, aggressive (30%) at high rates to kill post-turn spins. Do NOT use `angularDamping` on RigidBody — it damps all axes and fights intentional turns.
 - **Self-centering:** When grounded, not steering, hSpeed > 15 km/h, yaw rate < 0.5, and not physically moving backward, a corrective yaw aligns heading with velocity direction (simulates caster angle). Gated by yaw rate to prevent oscillation during spins. Gate on `forwardSpeed < -1` (physical direction), NOT `isReversing` (throttle input) — prevents jitter when switching from reverse to forward at speed.
-- **Steering drift:** Smoothed random yaw perturbation (target picked ~2% of frames, lerped at 5%/frame) prevents perfectly straight driving. Equalizes straight-line and post-turn top speed. Disabled during handbrake.
+- **Steering drift:** Smoothed random yaw perturbation (target picked ~2% of frames, lerped at 5%/frame) prevents perfectly straight driving. Equalizes straight-line and post-turn top speed. Disabled during handbrake. **Drift state is zeroed when yaw correction system is inactive** (handbrake, airborne, reversing) to prevent stale bias causing involuntary turning after handbrake spins.
+- **Ground detection:** Uses native `wheelIsInContact(i)` per-wheel checks via the controller (NOT a custom chassis raycast). `anyWheelGrounded` gates yaw correction; all wheels airborne gates air control.
+- **Wheel telemetry:** `useVehicleController` exposes `wheelContacts`, `wheelForwardImpulses`, `wheelSideImpulses` refs — populated each frame in `useAfterPhysicsStep`. Available for future wheelspin/traction HUD.
+- **Max suspension force:** `setWheelMaxSuspensionForce` configured per wheel (default 10000, configurable via `maxSuspensionForce` in JSON). Prevents silent force capping on heavy vehicles.
+- **No clutch factor:** Engine delivers full force at all speeds. Traction is limited naturally by `frictionSlip` — if wheel force exceeds grip, wheels spin (physically correct). No artificial low-speed throttle reduction.
 
 ### Vehicle Tuning Guide
 
 When adjusting vehicle configs, keep these relationships in mind:
 
-- **Density scaling:** When increasing `chassis.density` by N, also scale by N: `accelerate`, `brake`, `handbrake`, `suspensionStiffness`, `sideFrictionStiffness`, `rollingResistance`, `airDragCoefficient`, `suspensionDamping`.
+- **Density scaling:** When increasing `chassis.density` by N, also scale by N: `accelerate`, `brake`, `handbrake`, `suspensionStiffness`, `sideFrictionStiffness`, `rollingResistance`, `airDragCoefficient`, `suspensionDamping`. Check `maxSuspensionForce` (default 10000) is sufficient for heavy vehicles.
 - **Air drag coefficient:** Determines top speed. Theoretical formula: `airDragCoefficient = totalEngineForce / targetTopSpeed²` (speed in m/s, totalEngineForce = accelerate × numDriveWheels). Applied via `addForce` on chassis, NOT `setWheelBrake`. **In practice, set ~50% lower** than the formula suggests to account for overhead from steering drift correction, angular damping, and side friction.
 - **Handling (understeer/oversteer):** Controlled by `sideFrictionStiffness` (lateral grip) and `frictionSlip` (grip before sliding). Higher values = more planted. Sedan: 4/1.3, Sports: 15/1.4 (density 3), Tractor: 40/2.0 (density 10).
 - **Mixed wheel sizes:** When rear and front wheels have different radii, offset the smaller wheels' Y connection point by the radius difference to keep the chassis level. E.g. tractor rear 0.65, front 0.4 → front Y lowered by 0.25.

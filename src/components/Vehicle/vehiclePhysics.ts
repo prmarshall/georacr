@@ -68,24 +68,13 @@ export function computeEngineForce(
       : 0;
   const steerThrottleReduction = 1.0 - steerPenalty;
 
-  // Clutch engagement: ramp from 0.3 at standstill to 1.0 at ~15 km/h
-  const clutchFactor = MathUtils.lerp(
-    0.3,
-    1.0,
-    MathUtils.clamp(speedKmh / 15, 0, 1),
-  );
-
   // Gear torque multiplier
   const gearMultiplier = gears
     ? getGearTorque(gears, speedKmh).multiplier
     : 1.0;
 
   const engineForce =
-    throttle *
-    forces.accelerate *
-    steerThrottleReduction *
-    clutchFactor *
-    gearMultiplier;
+    throttle * forces.accelerate * steerThrottleReduction * gearMultiplier;
 
   const handBrake = Number(keys.handbrake) * forces.handbrake;
   const handbrakeActive = handBrake > 0;

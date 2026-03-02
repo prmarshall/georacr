@@ -25,6 +25,9 @@ export function useVehicleController(
     null,
   );
   const wheelRotations = useRef<number[]>([]);
+  const wheelContacts = useRef<boolean[]>([]);
+  const wheelForwardImpulses = useRef<number[]>([]);
+  const wheelSideImpulses = useRef<number[]>([]);
 
   useEffect(() => {
     const chassis = chassisRef.current;
@@ -49,10 +52,14 @@ export function useVehicleController(
       vehicle.setWheelMaxSuspensionTravel(index, wheel.maxSuspensionTravel);
       vehicle.setWheelFrictionSlip(index, wheel.frictionSlip);
       vehicle.setWheelSideFrictionStiffness(index, wheel.sideFrictionStiffness);
+      vehicle.setWheelMaxSuspensionForce(index, wheel.maxSuspensionForce);
     }
 
     vehicleController.current = vehicle;
     wheelRotations.current = new Array(wheelsInfo.length).fill(0);
+    wheelContacts.current = new Array(wheelsInfo.length).fill(false);
+    wheelForwardImpulses.current = new Array(wheelsInfo.length).fill(0);
+    wheelSideImpulses.current = new Array(wheelsInfo.length).fill(0);
 
     return () => {
       vehicleController.current = null;
@@ -80,6 +87,12 @@ export function useVehicleController(
     const forwardSpeed = _linvel
       .set(linvel.x, linvel.y, linvel.z)
       .dot(_forward);
+
+    for (let i = 0; i < wheelsInfo.length; i++) {
+      wheelContacts.current[i] = controller.wheelIsInContact(i);
+      wheelForwardImpulses.current[i] = controller.wheelForwardImpulse(i) ?? 0;
+      wheelSideImpulses.current[i] = controller.wheelSideImpulse(i) ?? 0;
+    }
 
     for (const [index, wheel] of wheels.entries()) {
       if (!wheel) continue;
@@ -111,5 +124,10 @@ export function useVehicleController(
     }
   });
 
-  return { vehicleController };
+  return {
+    vehicleController,
+    wheelContacts,
+    wheelForwardImpulses,
+    wheelSideImpulses,
+  };
 }

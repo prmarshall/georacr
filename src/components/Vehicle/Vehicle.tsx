@@ -3,7 +3,6 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
-import type { Collider } from "@dimforge/rapier3d-compat";
 import {
   Color,
   Euler,
@@ -41,7 +40,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   { config = VEHICLES[0].config },
   ref,
 ) {
-  const { rapier, world } = useRapier();
+  const { rapier } = useRapier();
   const gl = useThree((s) => s.gl);
   const [, getKeys] = useKeyboardControls();
 
@@ -54,13 +53,12 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
   const wheels = useMemo(() => createWheels(config), [config]);
 
-  const { vehicleController } = useVehicleController(
+  const { vehicleController, wheelContacts } = useVehicleController(
     chassisBodyRef,
     wheelsRef as React.RefObject<(Object3D | null)[]>,
     wheels,
   );
 
-  const ground = useRef<Collider | null>(null);
   const speedRef = useRef(0);
   const [brakeLightMat] = useMemo(
     () => [new MeshStandardMaterial({ color: new Color("#330000") })],
@@ -102,22 +100,8 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const chassisRigidBody = controller.chassis();
     const keys = getKeys() as unknown as Keys;
 
-    // --- ground check ---
-    const ray = new rapier.Ray(chassisRigidBody.translation(), {
-      x: 0,
-      y: -1,
-      z: 0,
-    });
-    const raycastResult = world.castRay(
-      ray,
-      1,
-      false,
-      undefined,
-      undefined,
-      undefined,
-      chassisRigidBody,
-    );
-    ground.current = raycastResult ? raycastResult.collider : null;
+    // --- ground check (per-wheel, from previous frame's updateVehicle) ---
+    const anyWheelGrounded = wheelContacts.current.some(Boolean);
 
     // --- engine + drivetrain ---
     const linvel = chassisRigidBody.linvel();
@@ -181,7 +165,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
     const hSpeedKmh = hSpeed * 3.6;
     const movingBackward = forwardSpeed < -1;
-    if (ground.current && !engine.handbrakeActive && !movingBackward) {
+    if (anyWheelGrounded && !engine.handbrakeActive && !movingBackward) {
       const angvel = chassisRigidBody.angvel();
       const steerDirection = Number(keys.left) - Number(keys.right);
       const chassisRot = chassisRigidBody.rotation();
@@ -200,6 +184,11 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
           true,
         );
       }
+    } else {
+      // Reset drift state when yaw correction is inactive so it starts
+      // clean when re-enabled (e.g. after handbrake spin release)
+      driftState.current.target = 0;
+      driftState.current.current = 0;
     }
 
     // --- dynamic wheel friction ---
@@ -216,7 +205,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     }
 
     // --- air control ---
-    if (!ground.current) {
+    if (!anyWheelGrounded) {
       const t = 1.0 - 0.01 ** (1 / 60);
       const chassisRot = chassisRigidBody.rotation();
       const currentAngvel = chassisRigidBody.angvel();

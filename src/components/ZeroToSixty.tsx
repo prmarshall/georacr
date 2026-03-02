@@ -13,15 +13,18 @@ export function ZeroToSixty({
 }) {
   const [time, setTime] = useState<number | null>(null);
   const captured = useRef(false);
-
-  useEffect(() => {
-    captured.current = false;
-    setTime(null);
-  }, [resetKey]);
+  const lastResetKey = useRef(resetKey);
 
   useEffect(() => {
     let raf: number;
     const update = () => {
+      // Handle reset via ref comparison (avoids synchronous setState in effect)
+      if (lastResetKey.current !== resetKey) {
+        lastResetKey.current = resetKey;
+        captured.current = false;
+        setTime(null);
+      }
+
       if (
         !captured.current &&
         startTime.current !== null &&

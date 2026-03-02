@@ -10,6 +10,7 @@ export interface WheelDefaults {
   suspensionStiffness: number;
   suspensionDamping?: number;
   maxSuspensionTravel: number;
+  maxSuspensionForce?: number;
   frictionSlip: number;
   sideFrictionStiffness: number;
   radius: number;
@@ -58,6 +59,7 @@ export interface WheelInfo {
   suspensionStiffness: number;
   suspensionDamping: number;
   maxSuspensionTravel: number;
+  maxSuspensionForce: number;
   frictionSlip: number;
   sideFrictionStiffness: number;
   radius: number;
@@ -163,6 +165,8 @@ export function createWheels(config: VehicleConfig): WheelInfo[] {
       placement.suspensionDamping ?? defaults.suspensionDamping ?? 0,
     maxSuspensionTravel:
       placement.maxSuspensionTravel ?? defaults.maxSuspensionTravel,
+    maxSuspensionForce:
+      placement.maxSuspensionForce ?? defaults.maxSuspensionForce ?? 10000,
     frictionSlip: placement.frictionSlip ?? defaults.frictionSlip,
     sideFrictionStiffness:
       placement.sideFrictionStiffness ?? defaults.sideFrictionStiffness,
