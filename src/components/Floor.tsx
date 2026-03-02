@@ -73,7 +73,7 @@ function RoadMarkers() {
 
 const ROAD_WIDTH = 8;
 const ROAD_LENGTH = 1000;
-const FLOOR_SIZE = 2200;
+const FLOOR_SIZE = 6000;
 const FINISH_WIDTH = 12;
 const FINISH_LENGTH = 4;
 

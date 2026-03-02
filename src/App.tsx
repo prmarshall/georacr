@@ -77,6 +77,7 @@ export default function App() {
         </KeyboardControls>
 
         <Sky sunPosition={[100, 50, 100]} />
+        <fog attach="fog" args={["#b0d0f0", 1000, 3000]} />
         <directionalLight
           position={[100, 50, 100]}
           intensity={1.5}
