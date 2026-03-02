@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { KeyboardControls } from "@react-three/drei";
+import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { Vehicle } from "@/components/Vehicle/Vehicle";
 import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
@@ -15,7 +15,7 @@ const controls = [
   { name: "backward", keys: ["ArrowDown", "KeyS"] },
   { name: "left", keys: ["ArrowLeft", "KeyA"] },
   { name: "right", keys: ["ArrowRight", "KeyD"] },
-  { name: "brake", keys: ["Space"] },
+  { name: "handbrake", keys: ["Space"] },
   { name: "reset", keys: ["KeyR"] },
 ];
 
@@ -144,7 +144,7 @@ export default function App() {
     <>
       <Canvas
         shadows
-        camera={{ fov: 60, near: 0.1, far: 1000 }}
+        camera={{ fov: 60, near: 0.1, far: 10000 }}
         className={styles.canvas}
       >
         <KeyboardControls map={controls}>
@@ -155,8 +155,20 @@ export default function App() {
           />
         </KeyboardControls>
 
-        <ambientLight intensity={1} />
-        <hemisphereLight intensity={0.5} />
+        <Sky sunPosition={[100, 50, 100]} />
+        <directionalLight
+          position={[100, 50, 100]}
+          intensity={1.5}
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+          shadow-camera-left={-50}
+          shadow-camera-right={50}
+          shadow-camera-top={50}
+          shadow-camera-bottom={-50}
+        />
+        <ambientLight intensity={0.5} />
+        <hemisphereLight intensity={0.3} />
       </Canvas>
 
       <div className={styles.vehicleSelector}>

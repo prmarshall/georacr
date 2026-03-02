@@ -9,7 +9,7 @@ export interface Keys {
   backward: boolean;
   left: boolean;
   right: boolean;
-  brake: boolean;
+  handbrake: boolean;
   reset: boolean;
 }
 
@@ -23,6 +23,7 @@ export interface EngineResult {
   engineForce: number;
   throttle: number;
   steerInput: number;
+  footBrake: number;
   handbrakeActive: boolean;
   handBrake: number;
   speedKmh: number;
@@ -40,11 +41,24 @@ export function computeEngineForce(
   config: VehicleConfig,
   keys: Keys,
   speed: number,
+  forwardSpeed: number,
 ): EngineResult {
   const { forces, driveType, gears } = config;
-  const throttle = Number(keys.forward) - Number(keys.backward);
   const steerInput = Math.abs(Number(keys.left) - Number(keys.right));
   const speedKmh = speed * 3.6;
+  const forwardSpeedKmh = forwardSpeed * 3.6;
+
+  // Brake-then-reverse: backward key acts as foot brake when moving forward
+  // above 5 km/h, switches to reverse engine below that threshold.
+  let throttle: number;
+  let footBrake = 0;
+  if (keys.backward && forwardSpeedKmh > 5) {
+    // Moving forward at speed — apply foot brake, no engine
+    throttle = 0;
+    footBrake = forces.brake;
+  } else {
+    throttle = Number(keys.forward) - Number(keys.backward);
+  }
 
   // FWD: reduce throttle when steering (front tires share grip between drive + turn)
   // Ramps from no penalty at standstill to full 40% at 30+ km/h
@@ -73,7 +87,7 @@ export function computeEngineForce(
     clutchFactor *
     gearMultiplier;
 
-  const handBrake = Number(keys.brake) * forces.brake;
+  const handBrake = Number(keys.handbrake) * forces.handbrake;
   const handbrakeActive = handBrake > 0;
   const isReversing = throttle < 0;
 
@@ -81,6 +95,7 @@ export function computeEngineForce(
     engineForce,
     throttle,
     steerInput,
+    footBrake,
     handbrakeActive,
     handBrake,
     speedKmh,
@@ -95,25 +110,33 @@ export function applyDrivetrain(
   },
   driveType: VehicleConfig["driveType"],
   engineForce: number,
+  footBrake: number,
   handbrakeActive: boolean,
   handBrake: number,
 ): void {
   const driveRear = driveType === "RWD" || driveType === "AWD";
   const driveFront = driveType === "FWD" || driveType === "AWD";
 
-  // On RWD/AWD the brake and engine fight over the same rear wheels —
+  // Foot brake zeroes engine — no engine force when braking
+  const effectiveEngine = footBrake > 0 ? 0 : engineForce;
+
+  // On RWD/AWD the handbrake and engine fight over the same rear wheels —
   // the clamped brake absorbs engine power, so rear engine force is killed.
-  const rearEngineForce = driveRear && !handbrakeActive ? engineForce : 0;
+  const rearEngineForce = driveRear && !handbrakeActive ? effectiveEngine : 0;
   controller.setWheelEngineForce(0, rearEngineForce);
   controller.setWheelEngineForce(1, rearEngineForce);
-  controller.setWheelEngineForce(2, driveFront ? engineForce : 0);
-  controller.setWheelEngineForce(3, driveFront ? engineForce : 0);
+  controller.setWheelEngineForce(2, driveFront ? effectiveEngine : 0);
+  controller.setWheelEngineForce(3, driveFront ? effectiveEngine : 0);
 
-  // Handbrake: locks rear wheels only (front stays free)
-  controller.setWheelBrake(0, handBrake);
-  controller.setWheelBrake(1, handBrake);
-  controller.setWheelBrake(2, 0);
-  controller.setWheelBrake(3, 0);
+  // Foot brake: rear-biased (70/30) to prevent nose-dive pitch flip.
+  // Front wheels get reduced braking to avoid pitching the car forward,
+  // especially on light vehicles with soft suspension (sedan).
+  // Handbrake: rear only. Use whichever is stronger on rear wheels.
+  const rearBrake = Math.max(footBrake, handBrake);
+  controller.setWheelBrake(0, rearBrake);
+  controller.setWheelBrake(1, rearBrake);
+  controller.setWheelBrake(2, footBrake * 0.3);
+  controller.setWheelBrake(3, footBrake * 0.3);
 }
 
 // ---------- Drag ----------
@@ -144,19 +167,34 @@ export function computeSteering(
   forces: VehicleConfig["forces"],
   keys: Keys,
   speedKmh: number,
+  delta: number,
 ): number {
-  const lowSpeedSteerBoost = MathUtils.lerp(
+  // Low-speed boost for tight manoeuvres (1.5x at standstill → 1.0x at 20+ km/h)
+  const lowSpeedBoost = MathUtils.lerp(
     1.5,
     1.0,
     MathUtils.clamp(speedKmh / 20, 0, 1),
   );
-  const steerDirection = Number(keys.left) - Number(keys.right);
-  const targetSteering =
-    forces.steerAngle * lowSpeedSteerBoost * steerDirection;
+  // High-speed reduction for stability (100% at 30 km/h → 30% at 150+ km/h)
+  const highSpeedReduction = MathUtils.lerp(
+    1.0,
+    0.3,
+    MathUtils.clamp((speedKmh - 30) / 120, 0, 1),
+  );
+  const maxAngle = forces.steerAngle * lowSpeedBoost * highSpeedReduction;
 
-  // Lerp toward target: 0.75 when turning in, 0.95 when centering (fast but smooth)
-  const steerLerp = steerDirection === 0 ? 0.95 : 0.75;
-  return MathUtils.lerp(currentSteering, targetSteering, steerLerp);
+  const steerDirection = Number(keys.left) - Number(keys.right);
+  const targetSteering = maxAngle * steerDirection;
+
+  // Slew rate: constant steering speed (rad/s) simulates physical steering rack.
+  // Centering is faster (self-aligning torque from caster angle).
+  const steerSpeed = steerDirection === 0 ? 3.0 : 2.0;
+  const maxChange = steerSpeed * delta;
+
+  // moveTowards: clamp change per frame to max steering speed
+  const diff = targetSteering - currentSteering;
+  if (Math.abs(diff) <= maxChange) return targetSteering;
+  return currentSteering + Math.sign(diff) * maxChange;
 }
 
 // ---------- Yaw Correction ----------

@@ -6,7 +6,8 @@
   },
   "forces": {
     "accelerate": 50,
-    "brake": 0.5,
+    "brake": 1.5,
+    "handbrake": 3.0,
     "steerAngleDeg": 35,
     "rollingResistance": 0.01,
     "airDragCoefficient": 0.04

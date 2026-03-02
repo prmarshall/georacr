@@ -31,6 +31,7 @@ export interface VehicleConfig {
   forces: {
     accelerate: number;
     brake: number;
+    handbrake: number;
     steerAngle: number;
     rollingResistance: number;
     airDragCoefficient: number;

@@ -4,7 +4,13 @@ import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Collider } from "@dimforge/rapier3d-compat";
-import { Euler, Object3D, Quaternion } from "three";
+import {
+  Color,
+  Euler,
+  MeshStandardMaterial,
+  Object3D,
+  Quaternion,
+} from "three";
 import { createWheels, type VehicleConfig } from "./vehicleConfig";
 import { VEHICLES } from "./vehicles";
 import { useVehicleController } from "./useVehicleController";
@@ -56,6 +62,10 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
 
   const ground = useRef<Collider | null>(null);
   const speedRef = useRef(0);
+  const [brakeLightMat] = useMemo(
+    () => [new MeshStandardMaterial({ color: new Color("#330000") })],
+    [],
+  );
 
   const { forces, spawn, chassis, driveType } = config;
 
@@ -85,7 +95,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
   // Camera runs in its own useFrame
   useChaseCamera(chassisMeshRef, vehicleController, gl);
 
-  useFrame(() => {
+  useFrame((_state, delta) => {
     if (!chassisMeshRef.current || !vehicleController.current) return;
 
     const controller = vehicleController.current;
@@ -116,14 +126,34 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     );
     speedRef.current = speed;
 
-    const engine = computeEngineForce(config, keys, speed);
+    // Compute forward speed (velocity projected onto chassis forward direction)
+    const chassisRot = chassisRigidBody.rotation();
+    const fx = 2 * (chassisRot.x * chassisRot.z + chassisRot.w * chassisRot.y);
+    const fz =
+      1 - 2 * (chassisRot.x * chassisRot.x + chassisRot.y * chassisRot.y);
+    const fLen = Math.sqrt(fx * fx + fz * fz);
+    const forwardSpeed =
+      fLen > 0.001 ? -(linvel.x * (fx / fLen) + linvel.z * (fz / fLen)) : 0;
+
+    const engine = computeEngineForce(config, keys, speed, forwardSpeed);
     applyDrivetrain(
       controller,
       driveType,
       engine.engineForce,
+      engine.footBrake,
       engine.handbrakeActive,
       engine.handBrake,
     );
+
+    // --- brake lights (foot brake or reversing, NOT handbrake) ---
+    const brakeLightsOn = engine.footBrake > 0 || engine.isReversing;
+    if (brakeLightsOn) {
+      brakeLightMat.emissive.setHex(0xff0000);
+      brakeLightMat.emissiveIntensity = 2;
+    } else {
+      brakeLightMat.emissive.setHex(0x000000);
+      brakeLightMat.emissiveIntensity = 0;
+    }
 
     // --- air drag + rolling resistance ---
     chassisRigidBody.resetForces(true);
@@ -142,6 +172,7 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       forces,
       keys,
       engine.speedKmh,
+      delta,
     );
     controller.setWheelSteering(2, steering);
     controller.setWheelSteering(3, steering);
@@ -149,7 +180,8 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     // --- yaw correction (drift + damping + self-centering) ---
     const hSpeed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
     const hSpeedKmh = hSpeed * 3.6;
-    if (ground.current && !engine.handbrakeActive) {
+    const movingBackward = forwardSpeed < -1;
+    if (ground.current && !engine.handbrakeActive && !movingBackward) {
       const angvel = chassisRigidBody.angvel();
       const steerDirection = Number(keys.left) - Number(keys.right);
       const chassisRot = chassisRigidBody.rotation();
@@ -225,6 +257,28 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
           ]}
         />
         <meshStandardMaterial color={config.color} />
+      </mesh>
+
+      {/* brake lights — two small rectangles at rear of chassis, shared material */}
+      <mesh
+        position={[
+          -chassis.halfExtents[0] * 0.6,
+          -chassis.halfExtents[1] * 0.3,
+          chassis.halfExtents[2] + 0.01,
+        ]}
+        material={brakeLightMat}
+      >
+        <boxGeometry args={[chassis.halfExtents[0] * 0.3, 0.08, 0.02]} />
+      </mesh>
+      <mesh
+        position={[
+          chassis.halfExtents[0] * 0.6,
+          -chassis.halfExtents[1] * 0.3,
+          chassis.halfExtents[2] + 0.01,
+        ]}
+        material={brakeLightMat}
+      >
+        <boxGeometry args={[chassis.halfExtents[0] * 0.3, 0.08, 0.02]} />
       </mesh>
 
       {/* wheels */}

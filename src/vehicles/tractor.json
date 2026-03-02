@@ -8,7 +8,8 @@
   },
   "forces": {
     "accelerate": 150,
-    "brake": 3,
+    "brake": 5,
+    "handbrake": 10,
     "steerAngleDeg": 45,
     "rollingResistance": 0.15,
     "airDragCoefficient": 2.43
