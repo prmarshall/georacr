@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { KeyboardControls, Sky } from "@react-three/drei";
+import { KeyboardControls } from "@react-three/drei";
+import { GoogleTiles } from "@/tiles/GoogleTiles";
 import { Physics } from "@react-three/rapier";
 import { Vehicle } from "@/components/Vehicle/Vehicle";
 import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
@@ -76,7 +77,7 @@ export default function App() {
           />
         </KeyboardControls>
 
-        <Sky sunPosition={[100, 50, 100]} />
+        <GoogleTiles />
         <directionalLight
           position={[100, 50, 100]}
           intensity={1.5}

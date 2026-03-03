@@ -107,25 +107,14 @@ export function Floor() {
     <RigidBody type="fixed" friction={1.5}>
       <CuboidCollider
         args={[FLOOR_SIZE / 2, 0.1, FLOOR_SIZE / 2]}
-        position={[0, 0, -FLOOR_SIZE / 2 + 100]}
+        position={[0, -20, -FLOOR_SIZE / 2 + 100]}
         friction={1.5}
       />
       {/* Ground */}
-      <mesh receiveShadow position={[0, -0.1, -FLOOR_SIZE / 2 + 100]}>
+      <mesh receiveShadow position={[0, -20.1, -FLOOR_SIZE / 2 + 100]}>
         <boxGeometry args={[FLOOR_SIZE, 0.2, FLOOR_SIZE]} />
         <meshStandardMaterial map={checkerMap} />
       </mesh>
-      {/* 1km road — starts at spawn, runs in -Z direction */}
-      <mesh position={[0, 0.01, -ROAD_LENGTH / 2]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[ROAD_WIDTH, ROAD_LENGTH]} />
-        <meshStandardMaterial map={roadMap} />
-      </mesh>
-      {/* Finish line at 1km */}
-      <mesh position={[0, 0.02, -ROAD_LENGTH]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[FINISH_WIDTH, FINISH_LENGTH]} />
-        <meshStandardMaterial map={finishMap} />
-      </mesh>
-      <RoadMarkers />
     </RigidBody>
   );
 }
