@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
-import { GoogleTiles } from "@/tiles/GoogleTiles";
+import { Tiles3D } from "@/tiles/Tiles3D";
 import { Physics } from "@react-three/rapier";
 import { Vehicle } from "@/components/Vehicle/Vehicle";
 import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
@@ -32,7 +32,7 @@ function Scene({
 }) {
   return (
     <Physics gravity={[0, -9.81, 0]}>
-      <GoogleTiles />
+      <Tiles3D />
       <Vehicle key={vehicleIndex} ref={vehicleRef} config={config} />
     </Physics>
   );
@@ -66,7 +66,8 @@ export default function App() {
     <>
       <Canvas
         shadows
-        camera={{ fov: 60, near: 0.1, far: 10000 }}
+        camera={{ fov: 60, near: 0.001, far: 10000 }}
+        gl={{ logarithmicDepthBuffer: true }}
         className={styles.canvas}
       >
         <KeyboardControls map={controls}>

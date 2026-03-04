@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# georacr
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A browser-based 3D driving game built with React and Three.js. Drive vehicles across real-world photogrammetric terrain powered by OGC 3D Tiles.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Multiple vehicles** -- Sedan (FWD), Sports Car (RWD), Tractor (RWD), each with distinct handling characteristics
+- **Realistic vehicle physics** -- Rapier's `DynamicRayCastVehicleController` with engine force, gearbox, air drag, rolling resistance, handbrake drifting, tire load sensitivity, and friction circle model
+- **3D Tiles terrain** -- Drive on real photogrammetric meshes loaded via the OGC 3D Tiles standard. Currently using NASA's Dingo Gap Mars dataset (Curiosity rover). Supports Google Photorealistic Tiles and Cesium Ion.
+- **Trimesh collision** -- Per-triangle physics colliders extracted from tile meshes with automatic LOD tracking
+- **Chase camera** -- GTA5-style follow cam with mouse orbit override and pointer lock
+- **HUD** -- Speedometer (mph/km/h), stopwatch, and 0-60 mph timer
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Layer     | Technology                         |
+| --------- | ---------------------------------- |
+| Framework | React 19 + TypeScript              |
+| Bundler   | Vite                               |
+| 3D Engine | Three.js + React Three Fiber (R3F) |
+| Physics   | Rapier (via @react-three/rapier)   |
+| 3D Tiles  | 3d-tiles-renderer (NASA-AMMOS)     |
+| Helpers   | @react-three/drei                  |
+| Styling   | SCSS Modules                       |
 
-## Expanding the ESLint configuration
+## Integrations
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **[3d-tiles-renderer](https://github.com/NASA-AMMOS/3DTilesRendererJS)** -- Loads and renders OGC 3D Tiles tilesets with automatic LOD, DRACO mesh decompression, and R3F bindings
+- **[Rapier](https://rapier.rs/)** -- WASM physics engine providing rigid body dynamics, raycast vehicle controller, and trimesh colliders
+- **[NASA Dingo Gap dataset](https://github.com/NASA-AMMOS/3DTilesSampleData)** -- Mars terrain captured by the Curiosity rover, served as 3D Tiles from GitHub
+- **Google Photorealistic 3D Tiles** -- Supported but currently disabled. Requires a Google Cloud API key (`VITE_MAP_TILES_API_TOKEN`)
 
-```js
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
+## Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Controls
 
-```js
-// eslint.config.js
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
-
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs["recommended-typescript"],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
-```
+| Key                    | Action                    |
+| ---------------------- | ------------------------- |
+| W / Arrow Up           | Accelerate                |
+| S / Arrow Down         | Brake / Reverse           |
+| A/D / Arrow Left/Right | Steer                     |
+| Space                  | Handbrake                 |
+| R                      | Reset vehicle             |
+| Click                  | Mouse look (pointer lock) |
+| Escape                 | Release mouse             |

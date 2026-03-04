@@ -13,6 +13,7 @@
 - **3D Engine:** Three.js + React Three Fiber (R3F)
 - **Physics:** @react-three/rapier v2.2.0 (uses `@dimforge/rapier3d-compat` internally)
 - **Helpers:** @react-three/drei
+- **3D Tiles:** 3d-tiles-renderer v0.4.21 (NASA-AMMOS) — loads OGC 3D Tiles tilesets with R3F bindings
 - **Styling:** SCSS + CSS Modules (`.module.scss`)
 - **Imports:** `@/` alias maps to `src/` (configured in `tsconfig.app.json` + `vite.config.ts`)
 
@@ -28,8 +29,12 @@ src/
 │   ├── sedan.json
 │   ├── sports.json
 │   └── tractor.json                     # Slow debug vehicle
+├── tiles/
+│   ├── Tiles3D.tsx                      # 3D Tiles renderer component (tileset loading, DRACO, group rotation)
+│   ├── useTileColliders.ts              # Trimesh colliders from tile meshes + bounding box walls
+│   └── CachedGoogleCloudAuthPlugin.ts   # Google Cloud auth caching (unused, kept for reference)
 ├── components/
-│   ├── Floor.tsx                        # 6000x6000 checkerboard ground + road + finish line
+│   ├── Floor.tsx                        # 6000x6000 checkerboard ground + road (unused, replaced by 3D Tiles)
 │   ├── HUD.tsx                          # HUD orchestrator (Speedometer + Stopwatch)
 │   ├── HUD.module.scss                  # Styles for all HUD instruments
 │   ├── Speedometer.tsx                  # mph primary + km/h secondary, ref-based updates
@@ -117,12 +122,57 @@ When adjusting vehicle configs, keep these relationships in mind:
 - **Fix:** Manual accumulator in `useVehicleController.ts` computes forward speed from chassis linear velocity projected onto chassis forward direction (`-Z` rotated by chassis quaternion). Rotation is `-(forwardSpeed * dt / radius)` per frame (negative sign = correct visual spin direction for -Z forward).
 - The `wheelRotations` ref array is reset when the vehicle controller is recreated.
 
+## 3D Tiles Terrain
+
+- **Library:** `3d-tiles-renderer` (v0.4.21) with R3F bindings (`3d-tiles-renderer/r3f`). Provides `TilesRenderer`, `TilesPlugin` components.
+- **Current tileset:** NASA Dingo Gap Mars (Curiosity rover photogrammetry). Small dataset, good for testing. URL hosted on GitHub (`NASA-AMMOS/3DTilesSampleData`). No API key required.
+- **Component:** `Tiles3D` in `src/tiles/Tiles3D.tsx`. Renders `<TilesRenderer url={...}>` with DRACO loader plugin. No auth plugin needed for public tilesets.
+- **Coordinate fix:** Tileset is Z-up; Three.js is Y-up. Group rotation `[Math.PI / 2, 0, 0]` on the `TilesRenderer` maps Z-up → Y-up. Do NOT use `-Math.PI / 2` — that flips upside down (tileset's up is -Z in its native frame).
+- **DRACO:** `GLTFExtensionsPlugin` with `DRACOLoader` pointing to Google's hosted decoders (`gstatic.com/draco/versioned/decoders/1.5.7/`).
+- **Google Tiles (disabled):** `CachedGoogleCloudAuthPlugin.ts` exists for Google Photorealistic 3D Tiles (requires `VITE_MAP_TILES_API_TOKEN` env var). Previously used WGS84 ECEF-to-local transforms via `WGS84_ELLIPSOID.getEastNorthUpFrame()`. Currently unused — swap back by adding the auth plugin and removing the `url` prop.
+
+### Tile Collision System (`useTileColliders.ts`)
+
+- **Trimesh colliders:** Each visible tile mesh gets a Rapier `trimesh` collider. Vertices are baked into world space (applying the full `matrixWorld` chain, including the Z→Y rotation). The car drives on the actual triangle geometry.
+- **LOD tracking:** Every frame, traverses the tile group and diffs current visible meshes (by `uuid`) against a `Map<string, Collider>`. New meshes → create trimesh collider. Removed meshes (LOD swap) → remove collider from Rapier world. Triangle mesh density directly affects collision surface — coarser LOD means rougher collision geometry.
+- **Bounding box walls:** Once meshes first appear, computes `Box3.setFromObject(group)` and creates 4 invisible cuboid wall colliders (0.5m thick, 10m tall) around the edges to prevent driving off the tile.
+- **Debug viz:** Red `Box3Helper` wireframe around the tile bounding box. All tile materials forced to `wireframe = true` each frame (catches LOD-swapped meshes). Console logs bbox center/size on first detection.
+- **Friction:** All colliders use friction 1.5.
+- **Cleanup:** All trimesh colliders, wall colliders, and debug helpers are removed on unmount.
+
+### Vehicle LOD Camera
+
+The `TilesRenderer` R3F component auto-registers the main chase camera for LOD decisions. This causes LOD to change when the player orbits the camera, which destabilizes collision geometry. A second `PerspectiveCamera` is registered to force consistent high-res LOD near the car:
+
+- **Setup:** `PerspectiveCamera(90° FOV, aspect 1, near 0.1, far 200)` created in a `useEffect` and registered via `tiles.setCamera(cam)`. Positioned 5m above the car, looking straight down.
+- **Frame ordering (critical):** The vehicle camera's position and resolution must be updated BEFORE `tiles.update()` runs the LOD traversal. The R3F `TilesRenderer` component calls `tiles.update()` in a `useFrame` at default priority (0). The vehicle camera update runs at `useFrame` priority `-1` (lower = earlier). Without this, the vehicle camera is always one frame behind.
+- **Resolution registration (critical):** `tiles.setResolutionFromRenderer(vehicleCam, gl)` must be called each frame. `setCamera()` only adds the camera to the internal map — without `setResolutionFromRenderer`, the camera has no pixel dimensions and the SSE calculation ignores it entirely.
+- **Both cameras stay registered:** The main camera provides frustum visibility (which tiles to load at all). The vehicle camera provides a stable LOD floor near the car. The tile renderer takes `Math.max(SSE)` across all cameras per tile.
+- **SSE (screen-space error):** `geometricError / (distance × sseDenominator)`. Closer camera = higher SSE = finer LOD loaded. The vehicle camera at 5m forces high SSE for nearby tiles regardless of chase camera distance.
+
+### LOD Edge Artifacts (By Design)
+
+Tiles at the edges of the Dingo Gap dataset appear higher quality from a distance and lower quality up close. This is **not a bug** — it's inherent to hierarchical 3D Tiles REPLACE refinement:
+
+- **From far away:** The parent tile (one unified mesh covering the whole area) is displayed. It looks uniformly smooth at distance.
+- **Up close:** The parent's SSE exceeds `errorTarget`, so it's replaced by children. Center children have high-detail geometry (dense rover stereo imagery). Edge children have coarse geometry (sparse camera coverage). The parent is hidden.
+- **The "high LOD from distance" is an illusion** — it's the parent tile looking smooth because you can't resolve its coarseness at range. No camera tuning can increase detail beyond what the source data contains.
+
+### Switching Tilesets
+
+To change the tileset, update the `url` in `Tiles3D.tsx`:
+
+- **Public tilesets:** Set `url` prop directly on `<TilesRenderer>`. No auth plugin needed.
+- **Google Photorealistic:** Remove `url` prop, add `CachedGoogleCloudAuthPlugin` as a `<TilesPlugin>`, set `VITE_MAP_TILES_API_TOKEN` in `.env`, and restore the WGS84 group transform (see git history commit `6abb416`).
+- **Cesium Ion:** Use `CesiumIonAuthPlugin` from `3d-tiles-renderer/plugins`.
+
 ## Scene & Rendering
 
+- **Terrain:** 3D Tiles (see above). Replaces the old checkerboard floor.
+- **Near plane:** `0.001` (1mm). Tight near plane prevents tile bounding volumes from being clipped when the chase camera orbits to low altitude, which would cause those tiles to drop out of frustum-based LOD calculations.
+- **Logarithmic depth buffer:** Enabled via `gl={{ logarithmicDepthBuffer: true }}` on `<Canvas>`. Required because the near/far ratio (0.001/10000 = 1:10,000,000) would destroy depth precision with a standard depth buffer. Log depth distributes precision evenly. Adds a small per-fragment `log2` cost (negligible on modern GPUs). All standard Three.js materials support it automatically.
 - **Sky:** drei `<Sky>` with `distance={450000}`. Default distance is only 1000 — the camera exits the sky box when driving far from origin, causing black sky. Always set distance much larger than the playable area.
 - **Fog:** Linear fog `["#b0d0f0", 5, 250]` — starts at 5 units, fully opaque at 250. Color matched to sky horizon for seamless fade.
-- **Floor:** 6000×6000 checkerboard ground plane with 1km road along -Z. Road raised to Y=0.05 to avoid z-fighting with ground (Y=-0.1).
-- **Road texture:** 64×256 canvas texture with `anisotropy=16` to prevent blurriness at oblique viewing angles ahead of the car. Without anisotropic filtering, mipmapping aggressively blurs road markings at low grazing angles.
 
 ## Camera
 
