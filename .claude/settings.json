@@ -1,23 +1,16 @@
 {
   "permissions": {
     "allow": [
-      // Allow hooks to run on all bash commands, but the bash_guard will filter out dangerous ones
       "Bash(python3 .claude/hooks/bash_guard.py *)",
       "Bash(python3 .claude/hooks/protect_files.py *)",
-      // Allow all git commands, but the bash_guard will block dangerous ones like 'git push'
       "Bash(gh repo view *)",
       "Bash(gh repo list *)",
-      // All staging must go through safe_add.py — blocks sensitive files before 'git add' runs
       "Bash(python3 .claude/hooks/safe_add.py *)",
-      // Allow commits directly — bash_guard strips quoted strings so -m is safe
       "Bash(git commit *)",
-      // Allow editing and writing files, but the protect_files hook will block critical ones
       "Edit(*)",
       "Write(*)",
-      // Allow running npm and npx commands, but the bash_guard will block dangerous ones like 'npm install -g' or 'npx create-react-app'
       "Bash(npm *)",
       "Bash(npx *)",
-      // Allow running node commands, but the bash_guard will block dangerous ones
       "Bash(node_modules/.bin/*)",
       "Bash(node *)"
     ]
