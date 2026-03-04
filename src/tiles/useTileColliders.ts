@@ -15,6 +15,7 @@ import type { Collider } from "@dimforge/rapier3d-compat";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Object3D, Camera, WebGLRenderer } from "three";
 import { useDebugStore } from "@/stores/useDebugStore";
+import { useLoadingStore } from "@/stores/useLoadingStore";
 
 export interface TilesRendererLike {
   group: Object3D;
@@ -286,6 +287,7 @@ export function useTileColliders(
       if (!box.isEmpty()) {
         bboxBuilt.current = true;
         bboxRef.current = box;
+        useLoadingStore.getState().setTilesReady();
 
         // Create helper if debug toggle is already on
         if (useDebugStore.getState().showBboxHelper) {
