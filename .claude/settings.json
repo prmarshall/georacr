@@ -1,14 +1,23 @@
 {
   "permissions": {
     "allow": [
+      // Allow hooks to run on all bash commands, but the bash_guard will filter out dangerous ones
       "Bash(python3 .claude/hooks/bash_guard.py *)",
       "Bash(python3 .claude/hooks/protect_files.py *)",
+      // Allow all git commands, but the bash_guard will block dangerous ones like 'git push'
       "Bash(gh repo view *)",
       "Bash(gh repo list *)",
+      // All staging must go through safe_add.py — blocks sensitive files before 'git add' runs
+      "Bash(python3 .claude/hooks/safe_add.py *)",
+      // Allow commits directly — bash_guard strips quoted strings so -m is safe
+      "Bash(git commit *)",
+      // Allow editing and writing files, but the protect_files hook will block critical ones
       "Edit(*)",
       "Write(*)",
+      // Allow running npm and npx commands, but the bash_guard will block dangerous ones like 'npm install -g' or 'npx create-react-app'
       "Bash(npm *)",
       "Bash(npx *)",
+      // Allow running node commands, but the bash_guard will block dangerous ones
       "Bash(node_modules/.bin/*)",
       "Bash(node *)"
     ]
@@ -61,6 +70,11 @@
             "type": "command",
             "command": "python3 .claude/hooks/log_result.py",
             "description": "Logs the outcome of bash commands."
+          },
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/git_status_report.py",
+            "description": "After any 'git add', runs 'git status' and injects the result into Claude's context so it can verify staging immediately."
           }
         ]
       },
@@ -69,8 +83,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx prettier --write \"$CLAUDE_FILE_PATHS\" && npm run lint -- --fix",
-            "description": "Automatically formats and lints modified files."
+            "command": "python3 .claude/hooks/format_lint.py",
+            "description": "Extracts modified file paths from stdin and runs prettier + lint auto-fix."
           }
         ]
       },

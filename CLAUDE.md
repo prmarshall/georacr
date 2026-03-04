@@ -70,6 +70,18 @@ src/
 - **Refs vs state:** Refs + `textContent` for per-frame updates (60fps). `useState` for discrete events that trigger re-renders. Never read refs during render (React 19 strict mode)
 - **Coordinate convention:** -Z is forward (Three.js default). Do NOT change to +Z forward
 
+## Git Commit Protocol
+
+- **Use `git commit -m`:** Quoted commit messages are safe — `bash_guard.py` strips quoted strings before checking for shell operators.
+- **Stage with `safe_add.py`:** Use `python3 .claude/hooks/safe_add.py <files>` instead of bare `git add`.
+- **Atomic actions:** Never chain commands with `&&`. Perform staging and committing as separate Bash calls.
+
+## Strict Terminal Protocol
+
+- **Atomic commands only:** Do not use command chaining operators (`;`, `&&`, `||`, `|` except for `grep`/`tail`).
+- **One tool per step:** Perform `git add` and `git commit` as two separate Bash tool calls.
+- **No heredocs:** Do not use `cat <<EOF`. If you need to write multi-line content, use the Write or Edit tools instead of the terminal.
+
 ## Detailed Rules (`.claude/rules/`)
 
 Path-scoped rules loaded on demand when working with matching files:
