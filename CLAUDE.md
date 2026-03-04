@@ -140,15 +140,59 @@ When adjusting vehicle configs, keep these relationships in mind:
 - **Friction:** All colliders use friction 1.5.
 - **Cleanup:** All trimesh colliders, wall colliders, and debug helpers are removed on unmount.
 
-### Vehicle LOD Camera
+### Vehicle LOD Camera System
 
-The `TilesRenderer` R3F component auto-registers the main chase camera for LOD decisions. This causes LOD to change when the player orbits the camera, which destabilizes collision geometry. A second `PerspectiveCamera` is registered to force consistent high-res LOD near the car:
+The R3F `TilesRenderer` component auto-registers the main chase camera for LOD decisions. This causes LOD to shift when the player orbits vertically (changing distance to tiles), which destabilizes collision geometry. The main camera is **unregistered** (`tiles.deleteCamera(mainCam)`) and replaced by two dedicated LOD cameras that provide stable, vehicle-anchored LOD:
 
-- **Setup:** `PerspectiveCamera(90° FOV, aspect 1, near 0.1, far 200)` created in a `useEffect` and registered via `tiles.setCamera(cam)`. Positioned 5m above the car, looking straight down.
-- **Frame ordering (critical):** The vehicle camera's position and resolution must be updated BEFORE `tiles.update()` runs the LOD traversal. The R3F `TilesRenderer` component calls `tiles.update()` in a `useFrame` at default priority (0). The vehicle camera update runs at `useFrame` priority `-1` (lower = earlier). Without this, the vehicle camera is always one frame behind.
-- **Resolution registration (critical):** `tiles.setResolutionFromRenderer(vehicleCam, gl)` must be called each frame. `setCamera()` only adds the camera to the internal map — without `setResolutionFromRenderer`, the camera has no pixel dimensions and the SSE calculation ignores it entirely.
-- **Both cameras stay registered:** The main camera provides frustum visibility (which tiles to load at all). The vehicle camera provides a stable LOD floor near the car. The tile renderer takes `Math.max(SSE)` across all cameras per tile.
-- **SSE (screen-space error):** `geometricError / (distance × sseDenominator)`. Closer camera = higher SSE = finer LOD loaded. The vehicle camera at 5m forces high SSE for nearby tiles regardless of chase camera distance.
+#### Architecture: Dual LOD Cameras
+
+1. **Close cam** (`CLOSE_CAM_DISTANCE = 1`): Positioned 1 unit behind the vehicle on the XZ plane. Extremely close proximity produces the highest possible SSE for tiles under and ahead of the car — forcing finest LOD for collision accuracy. 120° FOV, far = distance + 150.
+2. **Coverage cam** (`COVERAGE_CAM_DISTANCE = 15`): Positioned 15 units behind the vehicle (beyond the chase camera's `ORBIT_DISTANCE = 12`). Ensures tiles behind and around the viewer are always loaded. 120° FOV, far = distance + 150.
+
+The tile renderer evaluates `Math.max(SSE)` across all registered cameras per tile. The close cam wins near the vehicle (finest LOD), the coverage cam fills in everything else (good LOD).
+
+#### Flat-Plane Orbit (Critical)
+
+Both LOD cameras orbit the vehicle on the **flat XZ plane only**, mirroring the viewer's azimuth but ignoring elevation. This prevents vertical orbit from affecting LOD:
+
+- Each frame, compute `azimuth = atan2(viewerDX, viewerDZ)` from viewer to vehicle on XZ.
+- Both LOD cameras are placed at `(vehicle.x + sin(azimuth) * distance, vehicle.y, vehicle.z + cos(azimuth) * distance)`.
+- Height is always `vehicle.y` — never changes with viewer elevation.
+
+#### Why Not Fixed 360° Cameras?
+
+Multiple fixed cameras (e.g. 4-6 covering all directions) was considered but rejected: each registered camera adds a full SSE evaluation per tile during LOD traversal. The single rotating close cam is better because it points where the viewer is looking (usually the direction of travel), and the coverage cam provides adequate LOD in all other directions. Edge cases (reverse, sideways physics) happen at lower speeds where coarser collision geometry is acceptable.
+
+#### Vehicle Body Tracking
+
+Both LOD cameras read the chassis rigid body position (`vehicleBodyRef.translation()`) each frame — NOT the chase camera position. A `chassisBodyRef` is passed from `App.tsx` → `Tiles3D` → `useTileColliders`, and separately to `Vehicle` which populates it in its `useFrame`.
+
+#### Main Camera Unregistration
+
+The R3F `TilesRenderer` auto-registers the main camera in a `useLayoutEffect` and calls `setResolutionFromRenderer(mainCam)` each frame at priority 0. After `deleteCamera(mainCam)`, the per-frame `setResolutionFromRenderer` call harmlessly returns `false` (camera not in map) — no re-registration occurs.
+
+#### Frame Ordering (Critical)
+
+Both LOD cameras' positions and resolutions must be updated BEFORE `tiles.update()` runs the LOD traversal. The R3F `TilesRenderer` calls `tiles.update()` in a `useFrame` at default priority (0). The LOD camera update runs at `useFrame` priority `-1` (lower = earlier).
+
+#### Resolution Registration (Critical)
+
+`tiles.setResolutionFromRenderer(cam, gl)` must be called each frame for BOTH cameras. `setCamera()` only adds the camera to the internal map — without `setResolutionFromRenderer`, the camera has no pixel dimensions and the SSE calculation ignores it entirely.
+
+#### SSE (Screen-Space Error)
+
+`geometricError / (distance × sseDenominator)`. Closer camera = higher SSE = finer LOD. The close cam at 1 unit forces extremely high SSE for nearby tiles. The `errorTarget` prop on `TilesRenderer` (set to 6, default is 16) controls the SSE threshold — lower value = finer LOD at greater distance.
+
+#### Debug: Close Cam Frustum Helper
+
+A `CameraHelper` wireframe is attached to the close cam, visible in the scene. Updated each frame after camera positioning. Removed on cleanup.
+
+#### Tunables
+
+- `CLOSE_CAM_DISTANCE` (1): How far behind the vehicle the close cam sits. Smaller = higher SSE under the car.
+- `COVERAGE_CAM_DISTANCE` (15): Must exceed chase camera's `ORBIT_DISTANCE` (12) so the viewer is inside the coverage frustum.
+- `LOD_CAM_FAR` (150): How far ahead of each LOD camera tiles are refined.
+- `errorTarget` (6, on `<TilesRenderer>`): Global SSE threshold. Lower = finer LOD everywhere.
 
 ### LOD Edge Artifacts (By Design)
 

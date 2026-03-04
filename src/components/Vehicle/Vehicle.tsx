@@ -30,14 +30,17 @@ export interface VehicleHandle {
   reset: () => void;
   /** Current speed in m/s — updated every frame, read-only. */
   speed: number;
+  /** Chassis rigid body ref for external consumers (e.g. LOD camera). */
+  chassisBody: RapierRigidBody | null;
 }
 
 interface VehicleProps {
   config?: VehicleConfig;
+  chassisBodyRef?: React.RefObject<RapierRigidBody | null>;
 }
 
 export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
-  { config = VEHICLES[0].config },
+  { config = VEHICLES[0].config, chassisBodyRef: externalBodyRef },
   ref,
 ) {
   const { rapier } = useRapier();
@@ -87,6 +90,9 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
       get speed() {
         return speedRef.current;
       },
+      get chassisBody() {
+        return chassisBodyRef.current;
+      },
     }),
     [],
   );
@@ -100,6 +106,13 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     const controller = vehicleController.current;
     const chassisRigidBody = controller.chassis();
     const keys = getKeys() as unknown as Keys;
+
+    // Expose chassis body to external consumers (e.g. LOD camera)
+    if (externalBodyRef && "current" in externalBodyRef) {
+      (
+        externalBodyRef as React.MutableRefObject<RapierRigidBody | null>
+      ).current = chassisRigidBody;
+    }
 
     // --- ground check (per-wheel, from previous frame's updateVehicle) ---
     const anyWheelGrounded = wheelContacts.current.some(Boolean);
