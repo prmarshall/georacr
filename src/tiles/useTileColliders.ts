@@ -14,6 +14,7 @@ import {
 import type { Collider } from "@dimforge/rapier3d-compat";
 import type { RapierRigidBody } from "@react-three/rapier";
 import type { Object3D, Camera, WebGLRenderer } from "three";
+import { useDebugStore } from "@/stores/useDebugStore";
 
 export interface TilesRendererLike {
   group: Object3D;
@@ -84,11 +85,6 @@ export function useTileColliders(
     closeCam.current = close;
     tiles.setCamera(close);
 
-    // Debug: frustum wireframe for close cam
-    const helper = new CameraHelper(close);
-    scene.add(helper);
-    closeCamHelper.current = helper;
-
     // Coverage cam: far back so the viewer never sees unloaded tiles.
     const coverage = new PerspectiveCamera(
       120,
@@ -113,6 +109,42 @@ export function useTileColliders(
       tiles.setCamera(mainCam);
     };
   }, [tiles, mainCam]);
+
+  // Reactive CameraHelper: created/destroyed when toggle changes
+  const showCloseCamHelper = useDebugStore((s) => s.showCloseCamHelper);
+  useEffect(() => {
+    if (!closeCam.current) return;
+    if (showCloseCamHelper) {
+      const helper = new CameraHelper(closeCam.current);
+      scene.add(helper);
+      closeCamHelper.current = helper;
+    }
+    return () => {
+      if (closeCamHelper.current) {
+        scene.remove(closeCamHelper.current);
+        closeCamHelper.current.dispose();
+        closeCamHelper.current = null;
+      }
+    };
+  }, [showCloseCamHelper, scene]);
+
+  // Reactive Box3Helper: created/destroyed when toggle changes
+  const bboxRef = useRef<Box3 | null>(null);
+  const showBboxHelper = useDebugStore((s) => s.showBboxHelper);
+  useEffect(() => {
+    if (!bboxRef.current) return;
+    if (showBboxHelper) {
+      const helper = new Box3Helper(bboxRef.current, new Color(0xff0000));
+      scene.add(helper);
+      bboxHelper.current = helper;
+    }
+    return () => {
+      if (bboxHelper.current) {
+        scene.remove(bboxHelper.current);
+        bboxHelper.current = null;
+      }
+    };
+  }, [showBboxHelper, scene]);
 
   // Cleanup all colliders on unmount
   useEffect(() => {
@@ -141,7 +173,7 @@ export function useTileColliders(
     if (!tiles || !closeCam.current || !coverageCam.current) return;
 
     const body = vehicleBodyRef?.current;
-    if (body) {
+    if (body && body.isValid()) {
       const t = body.translation();
 
       // Viewer azimuth relative to vehicle on the flat XZ plane.
@@ -187,12 +219,13 @@ export function useTileColliders(
     group.traverse((child) => {
       if ((child as Mesh).isMesh) {
         const mesh = child as Mesh;
-        // Debug: wireframe
+        const wireframe = useDebugStore.getState().showTileWireframe;
         const mat = mesh.material;
         if (Array.isArray(mat)) {
-          for (const m of mat) (m as MeshStandardMaterial).wireframe = true;
+          for (const m of mat)
+            (m as MeshStandardMaterial).wireframe = wireframe;
         } else {
-          (mat as MeshStandardMaterial).wireframe = true;
+          (mat as MeshStandardMaterial).wireframe = wireframe;
         }
         currentMeshes.set(mesh.uuid, mesh);
       }
@@ -252,11 +285,14 @@ export function useTileColliders(
       const box = new Box3().setFromObject(group);
       if (!box.isEmpty()) {
         bboxBuilt.current = true;
+        bboxRef.current = box;
 
-        // Debug viz
-        const helper = new Box3Helper(box, new Color(0xff0000));
-        scene.add(helper);
-        bboxHelper.current = helper;
+        // Create helper if debug toggle is already on
+        if (useDebugStore.getState().showBboxHelper) {
+          const helper = new Box3Helper(box, new Color(0xff0000));
+          scene.add(helper);
+          bboxHelper.current = helper;
+        }
 
         const size = new Vector3();
         const center = new Vector3();

@@ -10,7 +10,9 @@ import type { VehicleConfig } from "@/components/Vehicle/vehicleConfig";
 import { VEHICLES } from "@/components/Vehicle/vehicles";
 
 import { HUD } from "@/components/HUD";
+import { MarsSky } from "@/components/MarsSky";
 import { UIButton } from "@/components/UIButton";
+import { DebugPanel } from "@/components/DebugPanel";
 import styles from "@/App.module.scss";
 
 const controls = [
@@ -101,6 +103,8 @@ export default function App() {
         />
         <ambientLight intensity={0.5} />
         <hemisphereLight intensity={0.3} />
+        <MarsSky />
+        <fog attach="fog" args={["#c8b898", 5, 250]} />
       </Canvas>
 
       <div className={styles.vehicleSelector}>
@@ -118,6 +122,8 @@ export default function App() {
       <UIButton onClick={handleReset} className={styles.resetButton}>
         Reset (R)
       </UIButton>
+
+      <DebugPanel />
     </>
   );
 }

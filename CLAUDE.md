@@ -14,6 +14,7 @@
 - **Physics:** @react-three/rapier v2.2.0 (uses `@dimforge/rapier3d-compat` internally)
 - **Helpers:** @react-three/drei
 - **3D Tiles:** 3d-tiles-renderer v0.4.21 (NASA-AMMOS) — loads OGC 3D Tiles tilesets with R3F bindings
+- **State Management:** Zustand v5 — lightweight store for UI/debug state. Used to bridge React DOM overlay ↔ R3F `useFrame` loops without re-renders.
 - **Styling:** SCSS + CSS Modules (`.module.scss`)
 - **Imports:** `@/` alias maps to `src/` (configured in `tsconfig.app.json` + `vite.config.ts`)
 
@@ -29,12 +30,17 @@ src/
 │   ├── sedan.json
 │   ├── sports.json
 │   └── tractor.json                     # Slow debug vehicle
+├── stores/
+│   └── useDebugStore.ts                 # Zustand store: debug toggle state (cam helper, wireframe, bbox)
 ├── tiles/
 │   ├── Tiles3D.tsx                      # 3D Tiles renderer component (tileset loading, DRACO, group rotation)
 │   ├── useTileColliders.ts              # Trimesh colliders from tile meshes + bounding box walls
 │   └── CachedGoogleCloudAuthPlugin.ts   # Google Cloud auth caching (unused, kept for reference)
 ├── components/
 │   ├── Floor.tsx                        # 6000x6000 checkerboard ground + road (unused, replaced by 3D Tiles)
+│   ├── DebugPanel.tsx                   # Gear icon + toggle panel for debug visuals (top-right)
+│   ├── DebugPanel.module.scss
+│   ├── MarsSky.tsx                      # GLSL gradient skybox (horizon/zenith/ground colors)
 │   ├── HUD.tsx                          # HUD orchestrator (Speedometer + Stopwatch)
 │   ├── HUD.module.scss                  # Styles for all HUD instruments
 │   ├── Speedometer.tsx                  # mph primary + km/h secondary, ref-based updates
@@ -136,7 +142,7 @@ When adjusting vehicle configs, keep these relationships in mind:
 - **Trimesh colliders:** Each visible tile mesh gets a Rapier `trimesh` collider. Vertices are baked into world space (applying the full `matrixWorld` chain, including the Z→Y rotation). The car drives on the actual triangle geometry.
 - **LOD tracking:** Every frame, traverses the tile group and diffs current visible meshes (by `uuid`) against a `Map<string, Collider>`. New meshes → create trimesh collider. Removed meshes (LOD swap) → remove collider from Rapier world. Triangle mesh density directly affects collision surface — coarser LOD means rougher collision geometry.
 - **Bounding box walls:** Once meshes first appear, computes `Box3.setFromObject(group)` and creates 4 invisible cuboid wall colliders (0.5m thick, 10m tall) around the edges to prevent driving off the tile.
-- **Debug viz:** Red `Box3Helper` wireframe around the tile bounding box. All tile materials forced to `wireframe = true` each frame (catches LOD-swapped meshes). Console logs bbox center/size on first detection.
+- **Debug viz:** Toggleable via `useDebugStore`. Red `Box3Helper` wireframe around tile bounding box, tile wireframe mode, and close cam `CameraHelper`. All off by default; toggled from the `DebugPanel` gear icon (top-right). Wireframe reads `getState()` inline in `useFrame` (zero overhead). Helpers use reactive `useEffect`s that create/destroy on toggle.
 - **Friction:** All colliders use friction 1.5.
 - **Cleanup:** All trimesh colliders, wall colliders, and debug helpers are removed on unmount.
 
@@ -167,6 +173,8 @@ Multiple fixed cameras (e.g. 4-6 covering all directions) was considered but rej
 
 Both LOD cameras read the chassis rigid body position (`vehicleBodyRef.translation()`) each frame — NOT the chase camera position. A `chassisBodyRef` is passed from `App.tsx` → `Tiles3D` → `useTileColliders`, and separately to `Vehicle` which populates it in its `useFrame`.
 
+**Critical: `body.isValid()` guard.** When the vehicle remounts (e.g. switching vehicles via selector), the old `RigidBody` is freed by Rapier but `chassisBodyRef.current` still holds the stale pointer until the new Vehicle mounts and overwrites it. Calling `.translation()` on a freed body hits Rapier's WASM "unreachable" trap and freezes the game. Always check `body.isValid()` before accessing any Rapier body method on a shared ref.
+
 #### Main Camera Unregistration
 
 The R3F `TilesRenderer` auto-registers the main camera in a `useLayoutEffect` and calls `setResolutionFromRenderer(mainCam)` each frame at priority 0. After `deleteCamera(mainCam)`, the per-frame `setResolutionFromRenderer` call harmlessly returns `false` (camera not in map) — no re-registration occurs.
@@ -185,7 +193,7 @@ Both LOD cameras' positions and resolutions must be updated BEFORE `tiles.update
 
 #### Debug: Close Cam Frustum Helper
 
-A `CameraHelper` wireframe is attached to the close cam, visible in the scene. Updated each frame after camera positioning. Removed on cleanup.
+A `CameraHelper` wireframe for the close cam. Toggled via `useDebugStore.showCloseCamHelper` (off by default). Created/destroyed reactively in a `useEffect`. Updated each frame when visible (`closeCamHelper.current` null-guard in `useFrame`).
 
 #### Tunables
 
@@ -215,8 +223,8 @@ To change the tileset, update the `url` in `Tiles3D.tsx`:
 - **Terrain:** 3D Tiles (see above). Replaces the old checkerboard floor.
 - **Near plane:** `0.001` (1mm). Tight near plane prevents tile bounding volumes from being clipped when the chase camera orbits to low altitude, which would cause those tiles to drop out of frustum-based LOD calculations.
 - **Logarithmic depth buffer:** Enabled via `gl={{ logarithmicDepthBuffer: true }}` on `<Canvas>`. Required because the near/far ratio (0.001/10000 = 1:10,000,000) would destroy depth precision with a standard depth buffer. Log depth distributes precision evenly. Adds a small per-fragment `log2` cost (negligible on modern GPUs). All standard Three.js materials support it automatically.
-- **Sky:** drei `<Sky>` with `distance={450000}`. Default distance is only 1000 — the camera exits the sky box when driving far from origin, causing black sky. Always set distance much larger than the playable area.
-- **Fog:** Linear fog `["#b0d0f0", 5, 250]` — starts at 5 units, fully opaque at 250. Color matched to sky horizon for seamless fade.
+- **Sky:** Custom `MarsSky` component — a large `BackSide` sphere (distance 9000, within camera `far` 10000) with a GLSL vertex/fragment shader. Vertical gradient: horizon (`#c8b898` dusty tan) → zenith (`#4a6d8c` muted blue) → ground (`#a89070` dark sand). Uses `smoothstep` blending. Vertex shader sets `pos.z = pos.w` to force fragments to max depth (far plane), eliminating z-fighting with scene geometry. `depthWrite={false}`, `fog={false}`. The sky must stay within the camera's far plane or it will be clipped. Do NOT use drei `<Sky>` — that's an Earth atmospheric scattering model.
+- **Fog:** Linear fog `["#c8b898", 5, 250]` — starts at 5 units, fully opaque at 250. Color matched to sky horizon for seamless fade into the Mars sky.
 
 ## Camera
 
@@ -233,10 +241,24 @@ To change the tileset, update the `url` in `Tiles3D.tsx`:
 - **HUD.tsx** orchestrates driving instruments (`Speedometer`, `Stopwatch`). Vehicle selector and reset button are general UI in `App.tsx`, NOT part of HUD.
 - **Refs vs useState rule:** Use refs + `textContent` for values that update every frame (speedometer, stopwatch elapsed). Use `useState` for discrete events that drive conditional rendering (0-60 capture). Never read refs during render (React 19 strict mode). If a value controls `if (x === null) return null`, it must be state.
 
+## State Management
+
+- **Library:** Zustand v5 (`src/stores/useDebugStore.ts`). Flat store, no nesting.
+- **Pattern for React components:** `useDebugStore(s => s.someFlag)` — selector subscription, re-renders only when that value changes.
+- **Pattern for `useFrame` loops:** `useDebugStore.getState().someFlag` — synchronous property access, zero React overhead. No hooks, no subscriptions.
+- **Adding a new toggle:** (1) Add boolean + toggle function to `useDebugStore.ts`, (2) Add `<ToggleRow>` to `DebugPanel.tsx`, (3) Read the state where needed.
+
+## UI
+
+- **Overlay layout:** HUD (bottom-left), Vehicle Selector (bottom-center), Reset Button (bottom-right), Debug Panel (top-right).
+- **DebugPanel:** Gear icon button toggles an overlay panel. Contains toggle rows for debug visuals (LOD cam helper, tile wireframe, bbox helper). Uses `UIButton` for all interactive elements. Panel open/close is local `useState`.
+- **UIButton:** All overlay buttons must use `UIButton` (tabIndex=-1, preventDefault on mouseDown). Never use raw `<button>`.
+
 ## Guidelines
 
 - Use functional components with TypeScript.
 - For 3D math, use Three.js classes (`Vector3`, `Quaternion`, `Euler`).
+- **Rapier body validity:** Always guard shared `RigidBody` refs with `body.isValid()` before calling any method. Refs survive component remounts but the underlying WASM body may be freed — calling methods on a freed body crashes with "unreachable" in WASM.
 - All vehicle physics tunables go in JSON files, not hardcoded in components.
 - `useAfterPhysicsStep` for wheel visual sync; `useFrame` for controls and camera.
 - All overlay UI buttons must use the `UIButton` component which prevents focus via `tabIndex={-1}` and `onMouseDown={preventDefault}`. Never use raw `<button>` in overlay UI.

@@ -14,7 +14,7 @@ FORBIDDEN = [
 SAFE_COMMANDS = [
     'ls', 'grep', 'cat', 'find', 'pwd', 'head', 'tail', 'cd', 
     'git', 'python3', 'pip', 'gh', 
-    'npm', 'npx', 'node', 'yarn' 
+    'npm', 'npx', 'node', 'yarn' , 'mkdir'
 ]
 
 GH_ALLOW_LIST = [

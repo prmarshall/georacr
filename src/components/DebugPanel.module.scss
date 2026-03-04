@@ -1,0 +1,58 @@
+.container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 10;
+}
+
+.gearButton {
+  background: rgba(255, 255, 255, 0.15);
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel {
+  margin-top: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  padding: 8px 0;
+  min-width: 180px;
+  font-family: sans-serif;
+}
+
+.title {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 12px 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border-radius: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: left;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.active {
+  color: #fff;
+}
+
+.indicator {
+  font-size: 10px;
+}
