@@ -13,6 +13,7 @@ import { HUD } from "@/components/HUD";
 import { MarsSky } from "@/components/MarsSky";
 import { UIButton } from "@/components/UIButton";
 import { DebugPanel } from "@/components/DebugPanel";
+import { useLoadingStore } from "@/stores/useLoadingStore";
 import styles from "@/App.module.scss";
 
 const controls = [
@@ -35,15 +36,19 @@ function Scene({
   config: VehicleConfig;
   chassisBodyRef: React.RefObject<RapierRigidBody | null>;
 }) {
+  const tilesReady = useLoadingStore((s) => s.tilesReady);
+
   return (
     <Physics gravity={[0, -9.81, 0]}>
       <Tiles3D vehicleBodyRef={chassisBodyRef} />
-      <Vehicle
-        key={vehicleIndex}
-        ref={vehicleRef}
-        config={config}
-        chassisBodyRef={chassisBodyRef}
-      />
+      {tilesReady && (
+        <Vehicle
+          key={vehicleIndex}
+          ref={vehicleRef}
+          config={config}
+          chassisBodyRef={chassisBodyRef}
+        />
+      )}
     </Physics>
   );
 }
@@ -73,8 +78,15 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const tilesReady = useLoadingStore((s) => s.tilesReady);
+
   return (
     <>
+      {!tilesReady && (
+        <div className={styles.loadingOverlay}>
+          <span className={styles.loadingText}>Loading terrain...</span>
+        </div>
+      )}
       <Canvas
         shadows
         camera={{ fov: 60, near: 0.001, far: 10000 }}
