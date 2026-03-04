@@ -82,6 +82,17 @@ src/
 - **One tool per step:** Perform `git add` and `git commit` as two separate Bash tool calls.
 - **No heredocs:** Do not use `cat <<EOF`. If you need to write multi-line content, use the Write or Edit tools instead of the terminal.
 
+## Future: Extractable Packages
+
+The **LOD-aware physics sync** system in `src/tiles/useTileColliders.ts` is novel and intended to be extracted into standalone open-source packages:
+
+- `3d-tiles-colliders-rapier` — Three.js + Rapier version
+- `3d-tiles-colliders-cannon` — Three.js + Cannon-es version (port)
+
+**Core algorithm (shared concept, not shared code):** Per-frame mesh diffing against a tile group by UUID, vertex extraction with world matrix baking into trimesh colliders, and collider lifecycle management (create on tile load, destroy on tile unload). Each package is self-contained — no shared abstraction layer between physics backends.
+
+**Not included in packages:** The dual LOD camera system and vehicle-specific logic stay in georacr. The packages only handle tileset → physics collider sync.
+
 ## Detailed Rules (`.claude/rules/`)
 
 Path-scoped rules loaded on demand when working with matching files:
