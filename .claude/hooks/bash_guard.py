@@ -43,17 +43,17 @@ def main() -> None:
     if not is_allowed:
         sys.stderr.write(f"BLOCKED: Command '{base_cmd}' not in allowed list.\n")
         sys.exit(2)
-
-    # 3. Enhanced Operator Check (Regex-based string ignoring)
-    # This removes quoted text so we don't block '>' inside a commit message
+    
+    # 3. Operator Check — strip quoted strings first so '>' inside commit messages isn't flagged
     stripped_cmd = re.sub(r"(['\"])(?:(?=(\\?))\2.)*?\1", " 'QUOTED_STR' ", command)
     stripped_cmd = stripped_cmd.replace("2>&1", "")
 
     operators = {
         '&&': "Command chaining (&&) is prohibited. Run commands one at a time.",
-        ';': "Command chaining (;) is prohibited.",
-        '>': "File redirection (>) is prohibited outside of quoted messages.",
-        '<<': "Heredocs (<<) are prohibited. Use the 'Write' tool instead."
+        '||': "Command chaining (||) is prohibited. Run commands one at a time.",
+        ';':  "Command chaining (;) is prohibited.",
+        '>':  "File redirection (>) is prohibited outside of quoted messages.",
+        '<<': "Heredocs (<<) are prohibited. Use the 'Write' tool instead.",
     }
 
     for op, reason in operators.items():
@@ -69,15 +69,23 @@ def main() -> None:
                 sys.stderr.write(f"BLOCKED: Piping to '{pipe_cmd}' is restricted.\n")
                 sys.exit(2)
 
-    # 5. Safety Flags & Patterns
+    # 5. Force flags & destructive patterns
     cmd_lower = command.lower()
     if "rm -rf" in cmd_lower or "--force" in cmd_lower:
         sys.stderr.write("BLOCKED: Force flags are prohibited.\n")
         sys.exit(2)
 
+    # 6. FORBIDDEN regex patterns
     for pattern, reason in FORBIDDEN:
         if re.search(pattern, command):
             sys.stderr.write(f"BLOCKED: {reason}\n")
+            sys.exit(2)
+
+    # 7. Git add — block sensitive files (runs after all broad safety checks)
+    if base_cmd == "git" and len(tokens) > 1 and tokens[1] == "add":
+        sensitive_patterns = [".env", "secrets", "config/private", ".ssh"]
+        if any(pattern in command for pattern in sensitive_patterns):
+            sys.stderr.write("BLOCKED: Adding sensitive files to git is prohibited.\n")
             sys.exit(2)
 
     sys.exit(0)
