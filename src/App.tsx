@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { KeyboardControls, Sky } from "@react-three/drei";
+import { KeyboardControls } from "@react-three/drei";
+import { GoogleTiles } from "@/tiles/GoogleTiles";
 import { Physics } from "@react-three/rapier";
 import { Vehicle } from "@/components/Vehicle/Vehicle";
 import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
 import type { VehicleConfig } from "@/components/Vehicle/vehicleConfig";
 import { VEHICLES } from "@/components/Vehicle/vehicles";
-import { Floor } from "@/components/Floor";
+
 import { HUD } from "@/components/HUD";
 import { UIButton } from "@/components/UIButton";
 import styles from "@/App.module.scss";
@@ -31,7 +32,7 @@ function Scene({
 }) {
   return (
     <Physics gravity={[0, -9.81, 0]}>
-      <Floor />
+      <GoogleTiles />
       <Vehicle key={vehicleIndex} ref={vehicleRef} config={config} />
     </Physics>
   );
@@ -76,8 +77,6 @@ export default function App() {
           />
         </KeyboardControls>
 
-        <Sky sunPosition={[100, 50, 100]} distance={450000} />
-        <fog attach="fog" args={["#b0d0f0", 5, 250]} />
         <directionalLight
           position={[100, 50, 100]}
           intensity={1.5}

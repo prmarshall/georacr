@@ -4,8 +4,7 @@
   "driveType": "RWD",
   "chassis": {
     "halfExtents": [0.99, 0.45, 2.24],
-    "density": 3,
-    "centerOfMassY": -0.2
+    "density": 3
   },
   "forces": {
     "accelerate": 100,
@@ -35,7 +34,7 @@
     ]
   },
   "spawn": {
-    "position": [0, 2, 0],
+    "position": [0, 5, 0],
     "rotation": [0, 0, 0]
   }
 }

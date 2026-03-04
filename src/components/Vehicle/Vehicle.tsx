@@ -1,10 +1,4 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { RigidBody, CuboidCollider, useRapier } from "@react-three/rapier";
@@ -96,38 +90,6 @@ export const Vehicle = forwardRef<VehicleHandle, VehicleProps>(function Vehicle(
     }),
     [],
   );
-
-  // --- center of mass shift (anti-wheelie) ---
-  // Uses setAdditionalMassProperties to add phantom mass below chassis,
-  // pulling the effective CoM down near the axle line.
-  useEffect(() => {
-    const body = chassisBodyRef.current;
-    const comY = chassis.centerOfMassY;
-    if (!body || comY == null || comY >= 0) return;
-
-    // Compute chassis mass from collider volume * density
-    const [hx, hy, hz] = chassis.halfExtents;
-    const volume = 8 * hx * hy * hz;
-    const density = chassis.density ?? 1;
-    const originalMass = volume * density;
-
-    // Place phantom mass at a fixed low point to minimize total mass increase.
-    // Formula: effectiveCoMY = (originalMass * 0 + additionalMass * phantomY)
-    //                        / (originalMass + additionalMass)
-    // Solving for additionalMass:
-    //   additionalMass = originalMass * |comY| / (|phantomY| - |comY|)
-    const PHANTOM_Y = -2.0;
-    const additionalMass =
-      (originalMass * Math.abs(comY)) / (Math.abs(PHANTOM_Y) - Math.abs(comY));
-
-    body.setAdditionalMassProperties(
-      additionalMass,
-      { x: 0, y: PHANTOM_Y, z: 0 },
-      { x: 0, y: 0, z: 0 },
-      { x: 0, y: 0, z: 0, w: 1 },
-      true,
-    );
-  }, [chassis]);
 
   // Camera runs in its own useFrame
   useChaseCamera(chassisMeshRef, vehicleController, gl);
