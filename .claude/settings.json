@@ -6,7 +6,11 @@
       "Bash(gh repo view *)",
       "Bash(gh repo list *)",
       "Edit(*)",
-      "Write(*)"
+      "Write(*)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node_modules/.bin/*)",
+      "Bash(node *)"
     ]
   },
   "hooks": {

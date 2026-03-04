@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import { Tiles3D } from "@/tiles/Tiles3D";
 import { Physics } from "@react-three/rapier";
+import type { RapierRigidBody } from "@react-three/rapier";
 import { Vehicle } from "@/components/Vehicle/Vehicle";
 import type { VehicleHandle } from "@/components/Vehicle/Vehicle";
 import type { VehicleConfig } from "@/components/Vehicle/vehicleConfig";
@@ -25,21 +26,29 @@ function Scene({
   vehicleRef,
   vehicleIndex,
   config,
+  chassisBodyRef,
 }: {
   vehicleRef: React.RefObject<VehicleHandle | null>;
   vehicleIndex: number;
   config: VehicleConfig;
+  chassisBodyRef: React.RefObject<RapierRigidBody | null>;
 }) {
   return (
     <Physics gravity={[0, -9.81, 0]}>
-      <Tiles3D />
-      <Vehicle key={vehicleIndex} ref={vehicleRef} config={config} />
+      <Tiles3D vehicleBodyRef={chassisBodyRef} />
+      <Vehicle
+        key={vehicleIndex}
+        ref={vehicleRef}
+        config={config}
+        chassisBodyRef={chassisBodyRef}
+      />
     </Physics>
   );
 }
 
 export default function App() {
   const vehicleRef = useRef<VehicleHandle>(null);
+  const chassisBodyRef = useRef<RapierRigidBody>(null);
   const [vehicleIndex, setVehicleIndex] = useState(0);
   const [resetKey, setResetKey] = useState(0);
 
@@ -75,6 +84,7 @@ export default function App() {
             vehicleRef={vehicleRef}
             vehicleIndex={vehicleIndex}
             config={vehicle.config}
+            chassisBodyRef={chassisBodyRef}
           />
         </KeyboardControls>
 

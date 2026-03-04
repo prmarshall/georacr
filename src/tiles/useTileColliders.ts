@@ -8,8 +8,11 @@ import {
   Box3Helper,
   Color,
   PerspectiveCamera,
+  MeshStandardMaterial,
+  CameraHelper,
 } from "three";
 import type { Collider } from "@dimforge/rapier3d-compat";
+import type { RapierRigidBody } from "@react-three/rapier";
 import type { Object3D, Camera, WebGLRenderer } from "three";
 
 export interface TilesRendererLike {
@@ -27,7 +30,10 @@ const _v = new Vector3();
  * Tracks tile LOD swaps — adds colliders for new meshes, removes
  * colliders for meshes that have been unloaded.
  */
-export function useTileColliders(tiles: TilesRendererLike | null) {
+export function useTileColliders(
+  tiles: TilesRendererLike | null,
+  vehicleBodyRef?: React.RefObject<RapierRigidBody | null>,
+) {
   const { world, rapier } = useRapier();
   const scene = useThree((s) => s.scene);
 
@@ -44,30 +50,69 @@ export function useTileColliders(tiles: TilesRendererLike | null) {
   const wallColliders = useRef<Collider[]>([]);
   const bboxBuilt = useRef(false);
 
-  // Vehicle LOD camera — forces high-res tiles near the car
-  const vehicleCam = useRef<PerspectiveCamera | null>(null);
+  // Two LOD cameras — both on the flat XZ plane, both stable:
+  //   1. Coverage cam: far behind the vehicle (beyond chase camera orbit),
+  //      wide frustum ensures tiles behind the viewer are loaded.
+  //   2. Close cam: tight to the vehicle, forces max SSE (finest LOD)
+  //      directly under and around the car for collision accuracy.
+  // The tile renderer takes Math.max(SSE) across all cameras per tile,
+  // so the close cam wins near the car, coverage cam wins everywhere else.
+  const closeCam = useRef<PerspectiveCamera | null>(null);
+  const closeCamHelper = useRef<CameraHelper | null>(null);
+  const coverageCam = useRef<PerspectiveCamera | null>(null);
+  const mainCam = useThree((s) => s.camera);
 
-  // Register a second vehicle camera to force high-res LOD near the car.
-  // The main R3F camera stays registered (by TilesRenderer component) for
-  // frustum culling / visibility. The tile renderer picks the highest LOD
-  // requirement across all registered cameras.
+  const CLOSE_CAM_DISTANCE = 1; // tight behind the vehicle → max SSE over longer range
+  const COVERAGE_CAM_DISTANCE = 15; // behind chase cam orbit (ORBIT_DISTANCE=12)
+  const LOD_CAM_FAR = 150;
+
   useEffect(() => {
     if (!tiles) return;
 
-    // 90° FOV from 5m above the car — covers ~10m diameter on the ground,
-    // close enough to force high-res LOD for tiles the car is driving on.
-    const cam = new PerspectiveCamera(90, 1, 0.1, 200);
-    cam.position.set(0, 5, 0);
-    cam.lookAt(0, 0, 0);
-    cam.updateMatrixWorld();
-    vehicleCam.current = cam;
+    // Unregister the auto-registered main camera so it no longer
+    // influences LOD. It still renders whatever tiles are loaded.
+    tiles.deleteCamera(mainCam);
 
-    tiles.setCamera(cam);
+    // Close cam: tight to vehicle for max LOD under the car.
+    const close = new PerspectiveCamera(
+      120,
+      1,
+      0.1,
+      CLOSE_CAM_DISTANCE + LOD_CAM_FAR,
+    );
+    close.updateMatrixWorld();
+    closeCam.current = close;
+    tiles.setCamera(close);
+
+    // Debug: frustum wireframe for close cam
+    const helper = new CameraHelper(close);
+    scene.add(helper);
+    closeCamHelper.current = helper;
+
+    // Coverage cam: far back so the viewer never sees unloaded tiles.
+    const coverage = new PerspectiveCamera(
+      120,
+      1,
+      0.1,
+      COVERAGE_CAM_DISTANCE + LOD_CAM_FAR,
+    );
+    coverage.updateMatrixWorld();
+    coverageCam.current = coverage;
+    tiles.setCamera(coverage);
+
     return () => {
-      tiles.deleteCamera(cam);
-      vehicleCam.current = null;
+      tiles.deleteCamera(close);
+      tiles.deleteCamera(coverage);
+      if (closeCamHelper.current) {
+        scene.remove(closeCamHelper.current);
+        closeCamHelper.current.dispose();
+        closeCamHelper.current = null;
+      }
+      closeCam.current = null;
+      coverageCam.current = null;
+      tiles.setCamera(mainCam);
     };
-  }, [tiles]);
+  }, [tiles, mainCam]);
 
   // Cleanup all colliders on unmount
   useEffect(() => {
@@ -90,23 +135,44 @@ export function useTileColliders(tiles: TilesRendererLike | null) {
   const gl = useThree((s) => s.gl);
 
   // Priority -1: runs BEFORE the TilesRenderer's useFrame (priority 0)
-  // which calls tiles.update(). The vehicle camera position and resolution
-  // must be current before the LOD traversal happens.
+  // which calls tiles.update(). Both LOD cameras must be current before
+  // the LOD traversal happens.
   useFrame(({ camera }) => {
-    if (!tiles || !vehicleCam.current) return;
+    if (!tiles || !closeCam.current || !coverageCam.current) return;
 
-    vehicleCam.current.position.set(
-      camera.position.x,
-      camera.position.y + 5,
-      camera.position.z,
-    );
-    vehicleCam.current.lookAt(
-      camera.position.x,
-      camera.position.y,
-      camera.position.z,
-    );
-    vehicleCam.current.updateMatrixWorld();
-    tiles.setResolutionFromRenderer(vehicleCam.current, gl);
+    const body = vehicleBodyRef?.current;
+    if (body) {
+      const t = body.translation();
+
+      // Viewer azimuth relative to vehicle on the flat XZ plane.
+      const dx = camera.position.x - t.x;
+      const dz = camera.position.z - t.z;
+      const azimuth = Math.atan2(dx, dz);
+      const sinA = Math.sin(azimuth);
+      const cosA = Math.cos(azimuth);
+
+      // Close cam: right behind the vehicle for max SSE.
+      closeCam.current.position.set(
+        t.x + sinA * CLOSE_CAM_DISTANCE,
+        t.y,
+        t.z + cosA * CLOSE_CAM_DISTANCE,
+      );
+      closeCam.current.lookAt(t.x, t.y, t.z);
+
+      // Coverage cam: behind the chase camera orbit for full tile coverage.
+      coverageCam.current.position.set(
+        t.x + sinA * COVERAGE_CAM_DISTANCE,
+        t.y,
+        t.z + cosA * COVERAGE_CAM_DISTANCE,
+      );
+      coverageCam.current.lookAt(t.x, t.y, t.z);
+    }
+
+    closeCam.current.updateMatrixWorld();
+    coverageCam.current.updateMatrixWorld();
+    if (closeCamHelper.current) closeCamHelper.current.update();
+    tiles.setResolutionFromRenderer(closeCam.current, gl);
+    tiles.setResolutionFromRenderer(coverageCam.current, gl);
   }, -1);
 
   // Priority 0 (default): runs after tiles.update() so meshes are current
@@ -124,9 +190,9 @@ export function useTileColliders(tiles: TilesRendererLike | null) {
         // Debug: wireframe
         const mat = mesh.material;
         if (Array.isArray(mat)) {
-          for (const m of mat) m.wireframe = true;
+          for (const m of mat) (m as MeshStandardMaterial).wireframe = true;
         } else {
-          mat.wireframe = true;
+          (mat as MeshStandardMaterial).wireframe = true;
         }
         currentMeshes.set(mesh.uuid, mesh);
       }
