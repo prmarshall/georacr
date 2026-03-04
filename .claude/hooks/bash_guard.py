@@ -83,7 +83,7 @@ def main() -> None:
 
     # 7. Git add — block sensitive files (runs after all broad safety checks)
     if base_cmd == "git" and len(tokens) > 1 and tokens[1] == "add":
-        sensitive_patterns = [".env", "secrets", "config/private", ".ssh"]
+        sensitive_patterns = [".env", "id_rsa", "auth.json", "secrets", "config/private", ".ssh"]
         if any(pattern in command for pattern in sensitive_patterns):
             sys.stderr.write("BLOCKED: Adding sensitive files to git is prohibited.\n")
             sys.exit(2)

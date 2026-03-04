@@ -9,6 +9,8 @@
       "Bash(gh repo list *)",
       // All staging must go through safe_add.py — blocks sensitive files before 'git add' runs
       "Bash(python3 .claude/hooks/safe_add.py *)",
+      // Allow commits directly — bash_guard strips quoted strings so -m is safe
+      "Bash(git commit *)",
       // Allow editing and writing files, but the protect_files hook will block critical ones
       "Edit(*)",
       "Write(*)",

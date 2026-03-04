@@ -72,9 +72,9 @@ src/
 
 ## Git Commit Protocol
 
-- **No complex bash commits:** Do not use `git commit -m` for messages containing special characters (`>`, `&`, `|`, etc.). Write the message to a temp file with the Write tool and use `git commit -F /tmp/commit-msg.txt`.
-- **Use the git script:** Use `.claude/bin/git_commit.py` if available, otherwise perform staging and committing as separate, simple bash calls.
-- **Atomic actions:** Never chain commands with `&&`. Perform `git add <file>` and then `git commit` as distinct steps.
+- **Use `git commit -m`:** Quoted commit messages are safe — `bash_guard.py` strips quoted strings before checking for shell operators.
+- **Stage with `safe_add.py`:** Use `python3 .claude/hooks/safe_add.py <files>` instead of bare `git add`.
+- **Atomic actions:** Never chain commands with `&&`. Perform staging and committing as separate Bash calls.
 
 ## Strict Terminal Protocol
 
