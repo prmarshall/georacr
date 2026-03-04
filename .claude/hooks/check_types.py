@@ -28,7 +28,7 @@ def main() -> None:
     try:
         json.loads(sys.stdin.read())
     except (json.JSONDecodeError, EOFError):
-        pass
+        sys.exit(0)
 
     tsc_code, tsc_output = run_tsc()
 

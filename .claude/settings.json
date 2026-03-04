@@ -1,9 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)",
       "Bash(python3 .claude/hooks/bash_guard.py *)",
       "Bash(python3 .claude/hooks/protect_files.py *)",
+      "Bash(gh repo view *)",
+      "Bash(gh repo list *)",
       "Edit(*)",
       "Write(*)"
     ]
@@ -27,6 +28,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 .claude/hooks/audit_logger.py",
+            "description": "Logs all bash attempts for later review."
+          },
+          {
+            "type": "command",
             "command": "python3 .claude/hooks/bash_guard.py",
             "description": "Monitors and restricts potentially harmful bash commands."
           }
@@ -44,6 +50,16 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/log_result.py",
+            "description": "Logs the outcome of bash commands."
+          }
+        ]
+      },
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
