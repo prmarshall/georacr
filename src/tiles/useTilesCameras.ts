@@ -25,7 +25,6 @@ export function useTilesCameras(
   const closeCam = useRef<PerspectiveCamera | null>(null);
   const coverageCam = useRef<PerspectiveCamera | null>(null);
   const mainCam = useThree((s) => s.camera);
-  const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
 
   useEffect(() => {
