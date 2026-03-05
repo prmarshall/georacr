@@ -1,0 +1,78 @@
+.speedometer {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.speedValue {
+  color: #fff;
+  font-size: 36px;
+  font-weight: 700;
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.speedUnit {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.speedValueSecondary {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 20px;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+
+.speedUnitSecondary {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+}
+
+.stopwatch {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  margin-bottom: 64px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: sans-serif;
+  pointer-events: none;
+  user-select: none;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.zeroToSixty {
+  margin-left: 16px;
+  color: #e04040;
+  font-size: 20px;
+}
+
+.zeroToSixtyLabel {
+  color: rgba(224, 64, 64, 0.6);
+  font-size: 12px;
+  font-weight: 400;
+  margin-right: 4px;
+}
