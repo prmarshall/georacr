@@ -1,8 +1,13 @@
+<div align="center">
+
 # georacr
 
-A browser-based 3D driving game built with React and Three.js. Drive vehicles across real-world photogrammetric terrain powered by OGC 3D Tiles.
+  <img src="https://github.com/user-attachments/assets/2f2672f3-3126-4b9b-9afb-d53e5373291a" alt="georacr-banner" width="400"/>
 
-**[Live Demo](https://prmarshall.github.io/georacr/)**
+  **A browser-based 3D driving game built with React and Three.js. Drive vehicles across real-world photogrammetric terrain powered by OGC 3D Tiles with trimesh collision data.**
+
+  [![Live Demo](https://img.shields.io/badge/demo-online-brightgreen?style=for-the-badge&logo=vercel)](https://prmarshall.github.io/georacr/)
+</div>
 
 ## Features
 
