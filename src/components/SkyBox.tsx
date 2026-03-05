@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { BackSide, Color } from "three";
+import type { SkyboxColors } from "@/constants";
 
 const vertexShader = /* glsl */ `
   varying vec3 vWorldPosition;
@@ -33,14 +34,22 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function MarsSky({ distance = 9000 }: { distance?: number }) {
+interface SkyBoxProps {
+  colors: SkyboxColors;
+  distance?: number;
+}
+
+export function SkyBox({
+  colors: { horizon, zenith, ground },
+  distance = 9000,
+}: SkyBoxProps) {
   const uniforms = useMemo(
     () => ({
-      uHorizon: { value: new Color("#c8b898") },
-      uZenith: { value: new Color("#4a6d8c") },
-      uGround: { value: new Color("#a89070") },
+      uHorizon: { value: new Color(horizon) },
+      uZenith: { value: new Color(zenith) },
+      uGround: { value: new Color(ground) },
     }),
-    [],
+    [horizon, zenith, ground],
   );
 
   return (

@@ -5,14 +5,12 @@ import { GLTFExtensionsPlugin } from "3d-tiles-renderer/plugins";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import type { RapierRigidBody } from "@react-three/rapier";
 import { useTileColliders } from "./useTileColliders";
+import { TILESET } from "@/constants";
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
 );
-
-const DINGO_GAP_URL =
-  "https://raw.githubusercontent.com/NASA-AMMOS/3DTilesSampleData/master/msl-dingo-gap/0528_0260184_to_s64o256_colorize/0528_0260184_to_s64o256_colorize/0528_0260184_to_s64o256_colorize_tileset.json";
 
 interface Tiles3DProps {
   vehicleBodyRef?: React.RefObject<RapierRigidBody | null>;
@@ -35,7 +33,7 @@ export function Tiles3D({ vehicleBodyRef }: Tiles3DProps) {
   return (
     <TilesRenderer
       ref={tilesCallbackRef}
-      url={DINGO_GAP_URL}
+      url={TILESET.dingoGap}
       errorTarget={6}
       group={
         {

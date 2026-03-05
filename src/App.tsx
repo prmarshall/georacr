@@ -10,10 +10,11 @@ import type { VehicleConfig } from "@/components/Vehicle/vehicleConfig";
 import { VEHICLES } from "@/components/Vehicle/vehicles";
 
 import { HUD } from "@/components/HUD";
-import { MarsSky } from "@/components/MarsSky";
+import { SkyBox } from "@/components/SkyBox";
 import { UIButton } from "@/components/UIButton";
 import { DebugPanel } from "@/components/DebugPanel";
 import { useLoadingStore } from "@/stores/useLoadingStore";
+import { SKYBOXES } from "@/constants";
 import styles from "@/App.module.scss";
 
 const controls = [
@@ -115,7 +116,7 @@ export default function App() {
         />
         <ambientLight intensity={0.5} />
         <hemisphereLight intensity={0.3} />
-        <MarsSky />
+        <SkyBox colors={SKYBOXES.dingoGap} />
         <fog attach="fog" args={["#c8b898", 5, 250]} />
       </Canvas>
 
